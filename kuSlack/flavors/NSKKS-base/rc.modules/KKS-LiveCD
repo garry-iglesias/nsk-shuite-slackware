@@ -1,0 +1,460 @@
+#KKS-LiveCD
+###############################################################################
+# Kommando Kustom Slackware - Live CD(/DVD) Session Operations.
+# ----------------------------------------------------------------------------
+# This script provides building bricks to setup a Slackware LIVE ISO.
+# A lot of it's material of configuration snippets has been integrated
+# directly from AlienBob's LiveSlak, or inspired by his work as documentation.
+###############################################################################
+
+###############################################################################
+# Live Session Public Interface:
+###############################################################################
+
+KKS_DEBUG_INIT=${KKS_DEBUG_INIT:-0}
+
+###############################################################################
+# ----------------------------------------------------------------------------
+#
+#    KKS - LIVE TREE
+#
+# ----------------------------------------------------------------------------
+###############################################################################
+
+######################################
+_kks-liveInit-liveSession () {
+    nsk-log "KKS> Initializing Live Session..."
+    # We ask for the very bare required for a "living" Slackware
+    # system:
+    _kks-extreme-core-packages | kuSlack-live-installPackages \
+	|| nsk-error "Failed to select core packages !"
+}
+
+######################################
+_kks-liveSetup-liveSession () {
+    nsk-log "KKS> Setting-up Live Session..."
+
+    _kks-lookupKernelVersion
+    
+    # Remove documentation:
+    (cd "$KOOK_LIVE/usr/doc" \
+	    && find "$KOOK_LIVE/usr/doc" -type d -mindepth 2 -maxdepth 2 -exec rm -rf {} \;)
+    rm -rf "$KOOK_LIVE/usr/man"
+
+    # Configure Network:
+    #TODO: parameterize this:
+    _kks-setupNetwork "$KKS_FQDN"
+
+    # Timezone:
+    _kks-setTimezone "$KKS_TIMEZONE"
+
+    # Remove ssh server keys - new unique keys will be generated
+    # at first boot of the live system:
+    kuSlack-live-rm '/etc/ssh/*key*'
+
+    # Limit local consoles:
+    kuSlack-live-sed '/etc/inittab' \
+		     -e '/^c3\|^c4\|^c5\|^c6/s/^/# /'
+
+    # File system.
+    _kks-setupLiveFileSystem
+
+    # File system table:
+    _kks-setLiveFSTAB
+
+    # Configure users credentials:
+    _kks-configureLiveAuth
+
+    # Services:
+    _kks-setupServices
+
+    # Complete installation with final touches:
+    _kks-finishLiveInstallation
+}
+
+######################################
+_kks-lookupKernelVersion () {
+    if [[ -z "${KKS_KERNEL_VERSION:-}" ]] ; then
+	# Pickup kernel version from modules present in the
+	# live tree:
+	local moduleList
+	moduleList="$(cd "$KOOK_LIVE/lib/modules" 2>/dev/null && find . -type d -mindepth 1 -maxdepth 1 || :)"
+	if [[ -n "$moduleList" ]] ; then
+	    <<<"$moduleList" IFS= read KKS_KERNEL_VERSION || :
+	    KKS_KERNEL_VERSION="${KKS_KERNEL_VERSION:2}"
+	else nsk-error "KKS! Couldn't find any kernel modules !"
+	fi
+	
+        # Generated generic image doesn't use the 'exact' kernel version.
+	# We should look up the generated kernel version in the kernel
+	# modules packages names:
+	KKS_KERNEL_GENVER="$(echo "$KOOK_LIVE/var/log/packages"/kernel*modules*  | rev | cut -d- -f3 | rev)"
+	
+	# Some verbosity:
+	nsk-log " * Picked up kernel version: [$KKS_KERNEL_VERSION]"
+	nsk-log " * Generated image version tag: [$KKS_KERNEL_GENVER]"
+    fi
+}
+
+######################################
+_kks-setDefaultDNS () {
+    nsk-log " * KKS - Default DNS."
+    kuSlack-appendLiveFile '/etc/resolv.conf' <<DEFAULT_RESOLV
+nameserver 8.8.4.4
+nameserver 8.8.8.8
+DEFAULT_RESOLV
+
+}
+
+######################################
+_kks-setTimezone () {
+    local tzTag="$1"
+    nsk-log " * KKS - Setting Time Zone [$tzTag]."
+
+    # Set local time:
+    local zoneInfo="/usr/share/zoneinfo/$tzTag" sourceTrack='/etc/localtime-copied-from'
+    kuSlack-live-cp "$zoneInfo" '/etc/localtime'
+    kuSlack-live-rm "$sourceTrack"
+    kuSlack-live-lns "$zoneInfo" "$sourceTrack"
+
+    # Set Hardware clock:
+    kuSlack-toLiveFile '/etc/hardwareclock' <<HW_CLOCK
+# /etc/hardwareclock
+#
+# Tells how the hardware clock time is stored.
+# You should run timeconfig to edit this file.
+$tzTag
+HW_CLOCK
+}
+
+######################################
+_kks-setLiveFSTAB () {
+    nsk-log " * KKS - Creating file-system table."
+    kuSlack-toLiveFile '/etc/fstab' <<LIVE_FSTAB
+proc      /proc       proc        defaults   0   0
+sysfs     /sys        sysfs       defaults   0   0
+tmpfs     /tmp        tmpfs       defaults,nodev,nosuid,mode=1777  0   0
+tmpfs     /var/tmp    tmpfs       defaults,nodev,nosuid,mode=1777  0   0
+tmpfs     /dev/shm    tmpfs       defaults,nodev,nosuid,mode=1777  0   0
+devpts    /dev/pts    devpts      gid=5,mode=620   0   0
+none      /           tmpfs       defaults   1   1
+LIVE_FSTAB
+}
+
+######################################
+_kks-configureLiveAuth () {
+    local rootPass='root' liveUser='live' liveUserPass='live'
+    local liveXID=2000
+    nsk-log " * KKS - Setup credentials [user:$liveUser]."
+
+    # Create live group and user:
+    <<<"$liveUser:x:$liveXID:" kuSlack-appendLiveFile '/etc/group'
+    kuSlack-live-exec '/usr/sbin/useradd' \
+	-c "Live Kustom Slackware User" \
+	-g "$liveUser" \
+	-G "wheel,audio,cdrom,floppy,plugdev,video,power,netdev,lp,scanner,kmem" \
+	-u $liveXID \
+	-d "/home/$liveUser" \
+	-m \
+	-s '/bin/bash' \
+	"$liveUser"
+
+    # "Install" user skeleton:
+    local skelPath="$KOOK_LIVE/etc/skel"
+    ( cd "$skelPath" &>/dev/null \
+	&& find . -exec cp -a --parents "{}" "${KOOK_LIVE}/home/$liveUser/" \; \
+	|| :
+    )
+
+    # Give user's home ownership:
+    # Warning: this might safer to do that "at last" ?
+    # ..maybe not: if we want to setup "special" files
+    # in live's home with different ownership, the "post"
+    # solution would prevent that... So maybe it's safer
+    # here and each "following" mods of home should take
+    # care of ownership ?
+    kuSlack-live-exec chown -R "$liveUser:$liveUser" "/home/$liveUser"
+
+    # Set passwords.
+    chpasswd --root "$KOOK_LIVE" <<LIVE_PASSWORDS
+root:$rootPass
+$liveUser:$liveUserPass
+LIVE_PASSWORDS
+
+    # Configure suauth:
+    kuSlack-toLiveFile '/etc/suauth' <<LIVE_SUAUTH
+root:$liveUser:OWNPASS
+root:ALL EXCEPT GROUP wheel:DENY
+LIVE_SUAUTH
+    kuSlack-live-chmod 600 '/etc/suauth'
+
+    # Configure sudoers:
+    if kuSlack-live-fileExist '/etc/sudoers' ; then
+	kuSlack-live-chmod 640 '/etc/sudoers'
+	kuSlack-live-sed '/etc/sudoers' -e 's,# *\(%wheel\sALL=(ALL)\sALL\),\1,'
+	kuSlack-live-chmod 440 '/etc/sudoers'
+    fi
+}
+
+######################################
+_kks-setupNetwork () {
+    local fqdn="$1" hostName="${1%%.*}" domainName="${1#*.}"
+    nsk-log " * KKS - Setup network with host [$fqdn]."
+    # The domain name:
+    _kks-setHostDomainName "$hostName" "$domainName"
+    # Force DNS access:
+    _kks-setDefaultDNS
+    # And the network configuration:
+    kuSlack-live-fileExist '/etc/rc.d/rc.networkmanager' \
+	&& _kks-setupNetworkManager \
+	|| _kks-setupRawSlackNetwork "$hostName"
+}
+
+######################################
+_kks-setHostDomainName () {
+    local fqdn="$1.$2" hostName="$1" domainName="$2"
+    echo "$fqdn" | kuSlack-toLiveFile '/etc/HOSTNAME'
+
+    # Network Manager:
+    local netManConf='/etc/NetworkManager/NetworkManager.conf'
+    ! kuSlack-live-fileExist "$netManConf" \
+	|| kuSlack-live-sed "$netManConf" -e "s,^hostname=.*,hostname=${hostName},"
+
+    # hosts file (local name lookup):
+    kuSlack-live-sed '/etc/hosts' \
+	-e "s,^\(127.0.0.1\t*\)darkstar.*,\1${fqdn} ${hostName},"
+}
+
+######################################
+_kks-setupNetworkManager () {
+    kuSlack-live-chmod +x '/etc/rc.d/rc.networkmanager'
+    kuSlack-toLiveFile '/etc/rc.d/rc.inet1.conf' <<NO_RAW_INET
+IFNAME[0]="eth0"
+IPADDR[0]=""
+NETMASK[0]=""
+USE_DHCP[0]=""
+DHCP_HOSTNAME[0]=""
+
+GATEWAY=""
+DEBUG_ETH_UP="no"
+NO_RAW_INET
+
+    # Ensure that NetworkManager uses its internal DHCP client - seems to give
+    # better compliancy:
+    kuSlack-live-sed '/etc/NetworkManager/NetworkManager.conf' \
+	-e 's,^dhcp=dhcpcd,#&,' \
+	-e 's,^#\(dhcp=internal\),\1,'
+}
+
+######################################
+_kks-setupRawSlackNetwork () {
+    local hostName="$1"
+    kuSlack-toLiveFile '/etc/rc.d/rc.inet1.conf' <<RAW_INET
+IFNAME[0]="eth0"
+IPADDR[0]=""
+NETMASK[0]=""
+USE_DHCP[0]="yes"
+DHCP_HOSTNAME[0]="$hostName"
+
+GATEWAY=""
+DEBUG_ETH_UP="no"
+RAW_INET
+}
+
+######################################
+_kks-setupServices () {
+    nsk-log " * KKS - Setup live services."
+    _kks-setService 'acpid' -x
+    _kks-setService 'pcmcia' -x
+    _kks-setService 'yp' -x
+    _kks-setService 'rpc' +x
+    #_kks-setService 'gpm' +x
+}
+
+######################################
+_kks-setService () {
+    local serviceScript="/etc/rc.d/rc.$1"
+    ! kuSlack-live-fileExist "$serviceScript" \
+	|| kuSlack-live-chmod "$2" "$serviceScript"
+}
+
+######################################
+_kks-setupLiveFileSystem () {
+    nsk-log " * KKS - Setup live filesystem."
+
+    # Skip all filesystem checks at boot:
+    kuSlack-live-touch '/etc/fastboot'
+
+    # Disable the root filesystem check altogether:
+    kuSlack-live-sed '/etc/rc.d/rc.S' \
+	-e '/^if \[ ! \$READWRITE = yes/,/^fi # Done checking root filesystem/s/^/#/'
+
+    # We will not write to the hardware clock:
+    kuSlack-live-sed '/etc/rc.d/rc.6' \
+	-e '/systohc/s/^/# /'
+
+}
+
+######################################
+_kks-finishLiveInstallation () {
+    nsk-log " * KKS - Completing live realm setup."
+
+    _kks-genLiveBashInstall | kuSlack-live-runBash
+    # Disable above commands in rc.M and rc.modules:
+    kuSlack-live-sed '/etc/rc.d/rc.M' \
+	-e "s% /usr/bin/update.*verbose%#&%" \
+	-e '/^ *\/usr\/bin\/glib-c/ s, /usr/bin/glib-c,#&,'
+    kuSlack-live-sed '/etc/rc.d/rc.modules' \
+	-e "s% /sbin/depmod -%#&%"
+
+    # Clean out the unneeded stuff:
+    # Note: this will fail when a directory is encountered. This failure points
+    # to a packaging issue; find and fix the responsible package.
+    rm -f "${KOOK_LIVE}/tmp"/[A-Za-z]*
+    rm -f "${KOOK_LIVE}/var"/mail/*
+    rm -f "${KOOK_LIVE}/root"/.bash*
+
+    # Slocate database (ideally should be run 'last').
+    ! kuSlack-live-fileExist '/etc/cron.daily/slocate' \
+	|| kuSlack-live-exec '/etc/cron.daily/slocate'
+}
+
+######################################
+_kks-genLiveBashCommon () {
+    cat <<LIVE_BASH_COMMON
+kksExec () {
+    local cmd="\$1" ; shift
+    [[ ! -x "\$cmd" ]] || "\$cmd" "$@" >/dev/null
+}
+
+LIVE_BASH_COMMON
+}
+
+######################################
+_kks-genLiveBashInstall () {
+    _kks-genLiveBashCommon
+    cat <<LIVE_BASH_INSTALL
+# Rebuild SSL certificate database:
+kksExec '/usr/sbin/update-ca-certificates' --fresh
+
+# Run bits from rc.M so we won't need to run them again in the live system:
+/sbin/depmod '$KKS_KERNEL_VERSION'
+/sbin/ldconfig
+
+# Update the desktop database:
+kksExec '/usr/bin/update-desktop-database' '/usr/share/applications'
+
+# Update hicolor theme cache:
+if [ -d usr/share/icons/hicolor ]; then
+  kksExec '/usr/bin/gtk-update-icon-cache' -f -t usr/share/icons/hicolor
+fi
+
+# Update the mime database:
+kksExec '/usr/bin/update-mime-database' '/usr/share/mime'
+
+# Font configuration:
+if [ -x usr/bin/fc-cache ]; then
+  for fontdir in 100dpi 75dpi OTF Speedo TTF Type1 cyrillic ; do
+    if [ -d usr/share/fonts/\$fontdir ]; then
+      mkfontscale /usr/share/fonts/\$fontdir &>/dev/null
+      mkfontdir /usr/share/fonts/\$fontdir &>/dev/null
+    fi
+  done
+  if [ -d usr/share/fonts/misc ]; then
+    mkfontscale /usr/share/fonts/misc  &>/dev/null
+    mkfontdir -e /usr/share/fonts/encodings -e /usr/share/fonts/encodings/large /usr/share/fonts/misc &>/dev/null
+  fi
+  /usr/bin/fc-cache -f &>/dev/null
+fi
+
+kksExec '/usr/bin/update-gtk-immodules'
+kksExec '/usr/bin/update-gdk-pixbuf-loaders'
+kksExec '/usr/bin/update-pango-querymodules'
+kksExec '/usr/bin/glib-compile-schemas' '/usr/share/glib-2.0/schemas'
+
+# Delete unwanted cache files:
+[[ ! -d 'usr/share/icons' ]] \\
+    || find 'usr/share/icons' -name 'icon-theme.cache' -exec rm "{}" \\;
+LIVE_BASH_INSTALL
+}
+
+###############################################################################
+# ----------------------------------------------------------------------------
+#
+#    KKS - RAMDISK INIT.
+#
+# ----------------------------------------------------------------------------
+###############################################################################
+
+######################################
+_kks-liveBefore-ramdisk () {
+    _kks-lookupKernelVersion
+
+    nsk-log "KKS> Linux-Kernel Version: [$KKS_KERNEL_VERSION]."
+    isolinux-setLiveKernel "$KOOK_BOOT/boot/vmlinuz-generic-$KKS_KERNEL_GENVER" 'generic'
+}
+
+######################################
+_kks-initrdInit-liveSession () {
+    nsk-log "KKS> Initializing live session initrd..."
+}
+
+######################################
+# Bind Live Directories, to 'host' one.
+# $1 -> directory:
+_kks-bld () { local d ; for d ; do mount --bind "$d" "$KOOK_LIVE$d" ; done ; }
+
+######################################
+# Well instead of splitting the initrd
+# generation, we do it all from setup.
+_kks-initrdSetup-liveSession () {
+    nsk-log "KKS> Setting up live session initrd..."
+    local initrdWait=5 kernelVersion="$KKS_KERNEL_VERSION"
+    local liveImagePath="/boot/initrd_${kernelVersion}.gz"
+    local kernMods="squashfs:overlay:loop:xhci-pci:ohci-pci:ehci-pci:xhci-hcd:uhci-hcd:ehci-hcd:usb-storage:hid:usbhid:hid-generic:hid-cherry:hid-logitech:hid-logitech-dj:hid-logitech-hidpp:hid-lenovo:hid-microsoft:jbd:mbcache:ext3:ext4:isofs:fat:nls_cp437:nls_iso8859-1:msdos:vfat"
+
+    # This is required for mkinitrd (?)
+    _kks-bld '/proc' '/sys' '/dev'
+
+    # Generate initrd using Slackware's script:
+    nsk-log "* Calling Init Ramdisk Maker..."
+    kuSlack-live-exec '/sbin/mkinitrd' -c \
+	-w $initrdWait \
+	-l us \
+	-o "$liveImagePath" \
+	-k "$kernelVersion" -m "$kernMods" \
+	-L -C dummy
+
+    # And install the init script:
+    nsk-log "* Installing Ramdisk init script..."
+    <"$NSKKS_TOOLS/liveinit" _kks-filterLiveInit | kuSlack-toLiveFile '/boot/initrd-tree/init'
+    chmod +x "$KOOK_LIVE/boot/initrd-tree/init"
+    
+    #nsk-resetFiles "$KOOK_LIVE/boot/initrd-tree/luksdev"
+
+    # Final image generation:
+    kuSlack-live-exec '/sbin/mkinitrd'
+
+    # Unmount bindings:
+    umount "$KOOK_LIVE/"{proc,sys,dev} || :
+
+    # Lift out the initrd image:
+    cp -a "$KOOK_LIVE/$liveImagePath" "$KOOK_INITRD_IMAGE"
+
+    # Clean bootinst:
+    rm -rf "$KOOK_BOOT/"{etc,tmp} "$KOOK_BOOT/boot/initrd-tree"
+}
+
+######################################
+_kks-filterLiveInit () {
+    local replacer
+    replacer="$(nsk-new-replacer)"
+    nsk-add-replace "$replacer" \
+	'@LIVEMAIN@' "$KOOK_VOLUME_NAME" \
+	'@MEDIALABEL@' "$KOOK_APP_ID" \
+	'@PERSISTENCE@' 'persistence' \
+	'@DARKSTAR@' "$KKS_HOSTNAME" \
+	'@DEBUG_INIT@' "$KKS_DEBUG_INIT"
+    nsk-close-and-replace "$replacer"
+}
+

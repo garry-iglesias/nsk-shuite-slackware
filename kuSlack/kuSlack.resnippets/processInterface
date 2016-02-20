@@ -1,0 +1,131 @@
+#######################################
+kuSlack-live-exec () { "$LU_CHROOT" "$KOOK_LIVE" "$@" ; }
+kuSlack-live-runBash () { "$LU_CHROOT" "$KOOK_LIVE" '/bin/bash' ; }
+#######################################
+kuSlack-livePath () { echo "$KOOK_LIVE/${1:1}" ; }
+kuSlack-dataPath () { echo "$KOOK_DATA/${1:1}" ; }
+#######################################
+kuSlack-live-touch () { touch "$KOOK_LIVE/${1:1}" || return 1 ; }
+kuSlack-live-cp () { cp -a "$KOOK_LIVE/${1:1}" "$KOOK_LIVE/${2:1}" || return 1 ; }
+kuSlack-live-rm () { eval rm -f "$KOOK_LIVE/${1:1}" || return 1 ; }
+kuSlack-live-rmDir () { eval rm -fr "$KOOK_LIVE/${1:1}" || return 1 ; }
+kuSlack-live-lns () { ln -s "$1" "$KOOK_LIVE/${2:1}" ; }
+kuSlack-live-chmod () { chmod "$1" "$KOOK_LIVE/${2:1}" ; }
+kuSlack-live-chmod+R () { chmod +R "$1" "$KOOK_LIVE/${2:1}" ; }
+#######################################
+# $1 -> 'target' absolute path.
+kuSlack-live-sed () {
+    chk-abs "$1"
+    local fpath="$KOOK_LIVE/${1:1}"
+    shift ; "$LU_SED" -i "$@" "$fpath" || return 1
+}
+kuSlack-data-sed () {
+    chk-abs "$1"
+    local fpath="$KOOK_DATA/${1:1}"
+    shift ; "$LU_SED" -i "$@" "$fpath" || return 1
+}
+kuSlack-live-fileExist () { [[ -f "$KOOK_LIVE/${1:1}" ]] && return 0 || return 1 ; }
+kuSlack-data-fileExist () { [[ -f "$KOOK_DATA/${1:1}" ]] && return 0 || return 1 ; }
+# stdin -> file content.
+kuSlack-toLiveFile () {
+    chk-abs "$1"
+    local fpath="$KOOK_LIVE/${1:1}"
+    nsk-deleteFiles "$fpath"
+    nsk-checkDir "${fpath%/*}"
+    cat >"$fpath" || return 1
+}
+kuSlack-toDataFile () {
+    chk-abs "$1"
+    local fpath="$KOOK_DATA/${1:1}"
+    nsk-deleteFiles "$fpath"
+    nsk-checkDir "${fpath%/*}"
+    cat >"$fpath" || return 1
+}
+kuSlack-appendLiveFile () {
+    chk-abs "$1"
+    local fpath="$KOOK_LIVE/${1:1}"
+    nsk-checkDir "${fpath%/*}"
+    cat >>"$fpath" || return 1
+}
+kuSlack-appendDataFile () {
+    chk-abs "$1"
+    local fpath="$KOOK_DATA/${1:1}"
+    nsk-checkDir "${fpath%/*}"
+    cat >>"$fpath" || return 1
+}
+#######################################
+# Live Image installer:
+KUSLACK_LIVE_PKGLIST="$(nsk-temp)"
+#######################################
+# $1 -> root lookup directory.
+# $2 -> package name.
+kuSlack-lookupPkg () {
+    "$LU_FIND" "$1" -type f -regextype sed -regex \
+        ".*/${2}-[^-/]\+\(-[^-/]\+\)\{2\}\.t.z" || return 1
+}
+#######################################
+# $1 -> Package full absolute path.
+kuSlack-live-installPkgFromPath () {
+   local pkgPath="$1"
+   if [[ -f "$pkgPath" ]]
+   then echo "$pkgPath" >>"$KUSLACK_LIVE_PKGLIST"
+   else nsk-error "Package not found at: [${pkgPath}]."
+   fi
+}
+#######################################
+# $1 -> Package name.
+kuSlack-live-installPkg () {
+    local pkgName="$1" pkgPath
+    #pkgPath="$("$LU_FIND" "$KOOK_STOCKPKG_ROOT" -name "${pkgName}*.t?z" -type f 2>/dev/null || :)"
+    pkgPath="$(kuSlack-lookupPkg "$KOOK_STOCKPKG_ROOT" "$pkgName" || :)"
+    if [[ -n "$pkgPath" ]]
+    then echo "$pkgPath" >>"$KUSLACK_LIVE_PKGLIST"
+    else nsk-error "Package not found: [${pkgName}]."
+    fi
+}
+#######################################
+kuSlack-live-installPackages () {
+    local cleanList pkgName
+    cleanList="$(nsk-cleanSource)"
+    while IFS= read pkgName || [[ -n "$pkgName" ]]
+    do kuSlack-live-installPkg "$pkgName"
+    done <<<"$cleanList"
+}
+#######################################
+# $1 -> Absolute tagfile path.
+# $2 -> Acceptance level (ADD|REC|OPT)
+kuSlack-live-installTagfile () {
+    local tagPath="$1" accLevel="${2:-ADD}" grepExp pkgList
+    case "$accLevel" in
+        'ADD') grepExp='ADD$' ;;
+        'REC') grepExp='ADD$\|REC$' ;;
+        'OPT') grepExp='ADD$\|REC$\|OPT$' ;;
+        *) nsk-error "Unknown acceptance level '$accLevel'."
+    esac
+    pkgList="$("$LU_GREP" -e "$grepExp" "$tagPath" | "$LU_CUT" -d: -f1)"
+    local pkgName baseDir pkgPath
+    baseDir="${tagPath%/*}"
+    while IFS= read pkgName ; do
+        pkgPath="$(kuSlack-lookupPkg "$baseDir" "$pkgName")"
+        if [[ -f "$pkgPath" ]]
+        then echo "$pkgPath" >>"$KUSLACK_LIVE_PKGLIST"
+        else nsk-error "Package not found: [${pkgName}].
+Looked at: '${pkgPath}'"
+        fi
+    done <<<"$pkgList"
+}
+#######################################
+# $1 -> Slackware collection name.
+# $2 -> Acceptance level (ADD|REC|OPT)
+kuSlack-live-installCollection () {
+    local colName="$1" accLevel="${2:-}" colPath
+    colPath="$("$LU_FIND" "$KOOK_STOCKPKG_ROOT" -name "$colName" -type d || :)"
+    if [[ -n "$colPath" ]] ; then
+        tagPath="${colPath}/tagfile"
+        if [[ -f "$tagPath" ]]
+        then kuSlack-live-installTagfile "$tagPath" "$accLevel"
+        else nsk-error "Tagfile not found at: '$tagPath'"
+        fi
+    else nsk-error "Collection [$colName] not found !"
+    fi
+}

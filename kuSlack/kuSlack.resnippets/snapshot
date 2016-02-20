@@ -1,0 +1,28 @@
+###############################################################################
+# Installation snapshot proceeding:
+###############################################################################
+#DISABLED... 
+# _kuSlack-snapshotRoot () { echo "$KOOK_OVEN/.shots/$1" ; }
+# 
+# #######################################
+# _kuSlack-liveLoadSnapshot () {
+#     local ssRoot
+#     ssRoot="$(_kuSlack-snapshotRoot "$KOOK_LIVE_SNAPSHOT_LOAD")"
+#     nsk-log "LOAD LIVE Snapshot: '$ssRoot'..."
+#     if [[ -d "$ssRoot/live.tree" ]] ; then
+#         nsk-log "LIVE Installation Snapshot loading in progress..."
+#         nsk-deleteDir "$KOOK_LIVE"
+#         cp -a "$ssRoot/live.tree" "$KOOK_LIVE"
+#     else nsk-eror "Snapshot '$KOOK_LIVE_SNAPSHOT_LOAD' not found !"
+#     fi
+# }
+# 
+# #######################################
+# _kuSlack-liveSaveSnapshot () {
+#     local ssRoot
+#     ssRoot="$(_kuSlack-snapshotRoot "$KOOK_LIVE_SNAPSHOT_SAVE")"
+#     nsk-log "SAVE LIVE Snapshot: '$ssRoot'..."
+#     nsk-resetDir "$ssRoot"
+#     cp -a "$KOOK_LIVE" "$ssRoot/live.tree"
+# }
+# 

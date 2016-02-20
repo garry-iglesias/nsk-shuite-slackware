@@ -1,0 +1,72 @@
+###############################################################################
+# Kustom Slackware ISOLINUX/SYSLINUX Realm Processing:
+###############################################################################
+#TODO: Clarify separation betion isolinux and syslinux cases or parameterize
+# this in a more "clever" way.
+
+#######################################
+# Isolinux environment:
+#######################################
+#TODO: Clean this...
+readonly KOOK_SRC_ISOLINUX="${KOOK_REPO_ROOT}/isolinux" # <- valid for installer installer...
+readonly KOOK_SOURCE_INITRD="${KOOK_SRC_ISOLINUX}/initrd.img" # <- installer only...
+
+# Do we require a custom ISOLINUX ?
+KOOK_LIVE_KUSTOM_ISOLINUX=${KOOK_LIVE_KUSTOM_ISOLINUX:-0}
+
+# Where will we setup isolinux on the data tree ?
+KOOK_DATA_ISOLINUX="${KOOK_DATA_ISOLINUX:-$KOOK_DATA/isolinux}"
+KOOK_DATA_ISOLINUX_INITRD_DIR="${KOOK_DATA_ISOLINUX_INITRD:-$KOOK_DATA_ISOLINUX}"
+
+#######################################
+_kook-isolinux-buildEnv () {
+    KOOK_ISO_SORT="$KOOK_DATA_ISOLINUX/iso.sort"
+    KOOK_ISO_BOOTCATALOG="$KOOK_DATA_ISOLINUX/isolinux.boot"
+    KOOK_ISO_BOOTIMAGE_1="$KOOK_DATA_ISOLINUX/isolinux.bin"
+    KOOK_ISO_BOOTIMAGE_2="$KOOK_DATA_ISOLINUX/efiboot.bin"
+}
+
+#######################################
+#TODO: this one is broken -> rework that.
+cpisol () { cp -a "${KOOK_SRC_ISOLINUX}/$1" "${KOOK_DATA_ISOLINUX}/$1" ; }
+cpisolIff () { [[ ! -f "${KOOK_SRC_ISOLINUX}/$1" ]] || cpisol "$1" ; }
+_kook-isolinux-default () {
+    # Copy some ISOLINUX files from source repo:
+    cpisol 'README.TXT'
+    cpisol 'iso.sort'
+    cpisol 'isolinux.bin'
+    cpisol 'efiboot.img' # Not sure if it doesn't need a rebuild too...
+    cpisolIff 'ldlinux.c32'
+    # Those should be dynamic instead... But for now... :)
+    cpisol 'isolinux.cfg'
+    cpisol 'message.txt'
+    cpisol 'f2.txt'
+    # Setup kernels:
+    local srcKernels="${KOOK_REPO_ROOT}/kernels"
+    local dataKernels="${KOOK_DATA}/kernels"
+    nsk-deleteDir "$dataKernels"
+    cp -a "$srcKernels" "$dataKernels"
+}
+
+#######################################
+kuSlack-setupIsolinux () {
+    nsk-log "Setting up Isolinux..."
+
+    # Initialize environment:
+    . "$KSHDL_KIL_INIT" || nsk-error "! Kustom Isolinux initialization handlers failed !"
+    _kook-isolinux-buildEnv
+
+    # Check if directory exists:
+    nsk-resetDir "$KOOK_DATA_ISOLINUX"
+    nsk-checkDir "$KOOK_DATA_ISOLINUX_INITRD_DIR"
+
+    # Call the corresponding ISOLINUX setup:
+    if (( KOOK_LIVE_KUSTOM_ISOLINUX ))
+    then . "$KSHDL_KIL" || nsk-error "! Kustom Isolinux handlers failed !"
+    else _kook-isolinux-default
+    fi
+
+    # And copy boot image:
+    cp -a "$KOOK_INITRD_IMAGE" "${KOOK_DATA_ISOLINUX_INITRD_DIR}/@{KOOK_INITRD_IMAGE_NAME}"
+}
+

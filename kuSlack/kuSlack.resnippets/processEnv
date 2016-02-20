@@ -1,0 +1,17 @@
+###############################################################################
+# Kustom Slackware Recipe Process Environment:
+###############################################################################
+
+#######################################
+# Iso parameters:
+#######################################
+readonly KOOK_TARGETISO_PATH="${KOOK_TARGET_DIR}/${KOOK_APP_ID}.iso"
+KOOK_ISO_MOD="${KOOK_ISO_MOD:-}"
+KOOK_ISO_OWNER="${KOOK_ISO_OWNER:-}"
+
+###############################################################################
+# Kustom Slackware Source Official Slackware Repository:
+###############################################################################
+KOOK_STOCKPKG_ROOT="$("$LU_FIND" "$KOOK_REPO_ROOT" -name 'slackware*' \
+    -type d -mindepth 1 -maxdepth 1)"
+

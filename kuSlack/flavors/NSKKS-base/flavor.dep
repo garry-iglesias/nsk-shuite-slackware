@@ -1,0 +1,10 @@
+###############################################################################
+# NoStress Kustom Slackware Flavor - Flavor Dependencies.
+###############################################################################
+# The NoStress Kommando Kustom Slackware Flavor, is the default basic
+# flavor. Its main effect is to provide an API to easily handle stock
+# slackware repository and easily 'patch' it.
+#
+
+# We use the isolinux 'taste'.
+isolinux

@@ -1,0 +1,17 @@
+# 2016 - Feb 08 [10:54]
+###############################################################################
+Initial ChangeLog message.
+This file will be the public brief for the NoStress Kommando Shell Suite for
+Slackware.
+
+Those tools were in-house projects. They will be released publicly and
+are not yet full-featured, and bug-free. Also documentation is sparse
+and should be improved "on demand".
+
+    * NoStress Kustom Slackware: A Slackware ISO customization tool.
+
+This utility have been developed over the period of 2013-2016 for internal
+server and workstation deployment as a Slackware Installation customizer.
+
+It's been rewritten with focus on Live ISO generation, legacy customized
+installer not yet upgraded.

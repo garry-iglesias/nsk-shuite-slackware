@@ -1,0 +1,261 @@
+###############################################################################
+# Kustom Slackware Live Realm Processing:
+###############################################################################
+kuSlack-liveInit () {
+    nsk-log "Initializing LIVE realm..."
+    chmod 775 "$KOOK_LIVE"
+    # Live 'init' handlers:
+    . "$KSHDL_LIVE_INIT" || nsk-error "! Live init handlers failed !"
+}
+
+#######################################
+kuSlack-liveBuild () {
+    nsk-log "Building LIVE realm..."
+    # initialize squasher enviroment:
+    _kook-squasherEnv
+
+    # Do we bypass the live tree generation ?
+    if (( KOOK_BYPASS_LIVE_GEN )) ; then
+	nsk-log "BYPASS> re-use previous build data requested..."
+	# We try to retrieve previous build live data:
+	_kuSlack-reloadOverlayStack
+    else
+	# We regenerate the full squash modules:
+	#_kuSlack-startSquashModule
+
+	# Live package installation:
+	if false #[[ -n "$KOOK_LIVE_SNAPSHOT_LOAD" ]]
+	then _kuSlack-liveLoadSnapshot
+	else
+	    (( KOOK_REUSE_PACKAGES )) \
+		&& _kook-live-reusePackages \
+		|| _kook-live-installPackages
+	fi
+
+	#[[ -z "$KOOK_LIVE_SNAPSHOT_SAVE" ]] || _kuSlack-liveSaveSnapshot
+
+	# Start the live tree configuration squash module:
+	_kuSlack-startSquashModule
+
+	# Live tree template override:
+	kuSlack-liveTreeList | kuSlack-copyTreeList "$KOOK_LIVE" \
+	    || nsk-error "Failed to copy flavors live tree."
+
+	# Live setup handlers:
+	. "$KSHDL_LIVE_SETUP" || nsk-error "! Live setup handlers failed !"
+
+	# Squash the modified live tree into a module:
+	_kuSlack-endSquashModule
+    fi
+}
+
+#######################################
+_kook-live-installPackages () {
+    # All installed packages will be 'squashed' in one module.
+    #TODO: do we need multiple modules ?
+    _kuSlack-startSquashModule
+
+    # Install selected package in the live tree:
+    <"$KUSLACK_LIVE_PKGLIST" kuSlack-installPackages
+
+    # Extract boot directory:
+    local liveBoot="$KOOK_LIVE/boot"
+    if [[ -d "$liveBoot" ]] ; then
+	nsk-deleteDir "$KOOK_BOOT/boot"
+	mv "$liveBoot" "$KOOK_BOOT/"
+	# And keep a snapshot in a safe place.
+	nsk-deleteDir "$KOOK_BOOT_SNAPSHOT"
+	cp -a "$KOOK_BOOT" "$KOOK_BOOT_SNAPSHOT"
+    fi
+
+    # And close the 'vanilla' module.
+    _kuSlack-endSquashModule
+}
+
+#######################################
+_kook-live-reusePackages () {
+    # For now we just have a module for the current package.
+    _kuSlack-reuseSquashModule
+    # Restore boot snapshot:
+    nsk-deleteDir "$KOOK_BOOT"
+    cp -a "$KOOK_BOOT_SNAPSHOT" "$KOOK_BOOT"
+}
+
+###############################################################################
+# Kustom Slackware Init Ram Disk Realm Processing:
+###############################################################################
+kuSlack-initrdInit () {
+    nsk-log "Initializing initrd tree..."
+    nsk-resetDir "$KOOK_INITRD"
+    if (( KOOK_LIVE_INSTALLER )) ; then
+        # Unpack source repository's initrd...
+        nsk-log "Extracting vanilla Slackware initrd..."
+        #TODO: document the cpio flags.
+        ( cd "$KOOK_INITRD" && gzip -dc "$KOOK_SOURCE_INITRD" \
+            | cpio -i -d -H newc --no-absolute-filenames ) \
+            || nsk-error "Failed unpacking vanilla initrd!"
+    fi
+    # Remove previously generated initrd:
+    nsk-deleteFiles "$KOOK_INITRD_IMAGE"
+    . "$KSHDL_INITRD_INIT" || nsk-error "! initrd init handlers failed !"
+}
+
+#######################################
+kuSlack-initrdBuild () {
+    nsk-log "Building initrd tree..."
+    # Start the bootinst squash module:
+    if (( !KOOK_LIVE_INSTALLER )) ; then
+	_kuSlack-startLiveBootModule
+	# if (( KOOK_REUSE_PACKAGES )) ; then
+	#     _kuSlack-reuseBootModule
+	# else _kuSlack-startLiveBootModule
+	# fi
+    fi
+
+    # Call user initrd setup:
+    . "$KSHDL_INITRD_SETUP" || nsk-error "! initrd setup handlers failed !"
+
+    # Close the bootinst squash module:
+    if (( !KOOK_LIVE_INSTALLER )) ; then
+	# And pack module:
+	_kuSlack-endSquashModule
+	# (( !KOOK_REUSE_PACKAGES )) || _kuSlack-endSquashModule
+    fi
+}
+
+#######################################
+kuSlack-initrdPack () {
+    nsk-log "Creating initrd image..."
+    # Pack the initrd if installer used:
+    if (( KOOK_LIVE_INSTALLER )) ; then
+        cd "$KOOK_INITRD"
+        find . -print | cpio -o -H newc 2>/dev/null | gzip -9 >"$KOOK_INITRD_IMAGE"
+    fi
+
+    # Sanity check:
+    [[ -f "$KOOK_INITRD_IMAGE" ]] \
+        || nsk-error "Init ramdisk image not found at: $KOOK_INITRD_IMAGE"
+}
+
+###############################################################################
+# Kustom Slackware Data Realm Processing:
+###############################################################################
+kuSlack-dataInit () {
+    nsk-log "Initializing DATA realm..."
+    # Data 'init' handlers:
+    . "$KSHDL_DATA_INIT" || nsk-error "! Data init handlers failed !"
+}
+
+#######################################
+kuSlack-dataBuild () {
+    nsk-log "Building DATA realm..."
+    # Data tree template override:
+    kuSlack-dataTreeList | kuSlack-copyTreeList "$KOOK_DATA"
+
+    # Data 'setup' handlers:
+    . "$KSHDL_DATA_SETUP" || nsk-error "! Data setup handlers failed !"
+}
+
+###############################################################################
+# Kustom Slackware ISO Image Generation:
+###############################################################################
+
+#######################################
+#TODO: Allow [1..n] boot images with their associated platforms...
+#Warning: hard-coded boot images (second is EFI).
+kuSlack-imageGen () {
+    local argVerbose='-quiet' bootLoadSize=4
+    nsk-log "Generating ISO Image..."
+    if (( KUSLACK_VERBOSE )) ; then
+        argVerbose='-v'
+        cat <<ISO_INFOS
+Target: '$KOOK_TARGETISO_PATH'
+Volume ID: '$KOOK_VOLUME_NAME'
+Application ID: '$KOOK_APP_ID'
+ISO_INFOS
+    fi
+
+    # Check target ISO parent directory:
+    nsk-checkDir "$KOOK_TARGET_DIR"
+
+    # Relativize parameters:
+    local isoSort isoBootCat isoBoot1 isoBoot2
+    isoSort="$(nsk-abs2rel "$KOOK_DATA" "$KOOK_ISO_SORT")"
+    isoBootCat="$(nsk-abs2rel "$KOOK_DATA" "$KOOK_ISO_BOOTCATALOG")"
+    isoBoot1="$(nsk-abs2rel "$KOOK_DATA" "$KOOK_ISO_BOOTIMAGE_1")"
+    isoBoot2="$(nsk-abs2rel "$KOOK_DATA" "$KOOK_ISO_BOOTIMAGE_2")"
+
+    # And do the job:
+    cd "$KOOK_DATA" && mkisofs -o "$KOOK_TARGETISO_PATH" \
+        -R -J -A "$KOOK_APP_ID" \
+        -hide-rr-moved \
+        $argVerbose -d -N \
+        -no-emul-boot -boot-load-size $bootLoadSize -boot-info-table \
+        -sort "$isoSort" \
+        -b "$isoBoot1" \
+        -c "$isoBootCat" \
+        -eltorito-alt-boot -no-emul-boot -eltorito-platform 0xEF \
+        -eltorito-boot "$isoBoot2" \
+        -V "$KOOK_VOLUME_NAME" \
+        . \
+        || nsk-error "Couldn't generate ISO image..."
+
+    # Apply permissions to ISO image:
+    [[ -z "$KOOK_ISO_MOD" ]] \
+        || chmod "$KOOK_ISO_MOD" "$KOOK_TARGETISO_PATH" \
+        || nsk-error "Couldn't change iso permissions."
+    [[ -z "$KOOK_ISO_OWNER" ]] \
+        || chown "$KOOK_ISO_OWNER" "$KOOK_TARGETISO_PATH" \
+        || nsk-error "Couldn't change iso owners."
+
+    # Post-generation handlers:
+    . "$KSHDL_POST" || echo-err "! Post handlers failed !"
+
+    # Inform kommander:
+    nsk-log "ISO Image generated: '${KOOK_TARGETISO_PATH}'"
+}
+
+###############################################################################
+# Kustom Slackware Recipe Processing:
+###############################################################################
+kuSlack-recipeProcess () {
+    nsk-log "Applying flavored Kustom Slackware recipe..."
+    # Initialize workspace:
+    _kuSlack-resetSquashOverlay
+    _kuSlack-prepareDirectories
+    dbg-dumpEnv 'Process begin'
+    # Initialization handlers:
+    . "$KSHDL_INIT" || nsk-error "! Init handlers failed !"
+    kuSlack-liveInit
+    kuSlack-dataInit
+    kuSlack-initrdInit
+    dbg-dumpEnv 'Initialization done'
+    # Build Realms:
+    kuSlack-liveBuild
+    kuSlack-dataBuild
+    dbg-dumpEnv 'Build done'
+    # Prepare the ramdisk settings:
+    . "$KSHDL_BEFORE_RAMDISK" || nsk-error "! Before ramdisk handlers failed !"
+    dbg-dumpEnv 'Before Ramdisk done.'
+    kuSlack-initrdBuild
+    # Generate live-boot image:
+    (( KOOK_NO_INITRD )) && nsk-error "Ramdisk packing abortion requested!" || :
+    kuSlack-initrdPack
+    dbg-dumpEnv 'Init Ramdisk done.'
+    # Prepare ISOLINUX:
+    (( KOOK_NO_ISO )) && nsk-error "ISO generation abortion requested!" || :
+    kuSlack-setupIsolinux
+    dbg-dumpEnv 'Isolinux done.'
+    # Generate ISO Image:
+    kuSlack-imageGen
+    # Clean temporary files:
+    nsk-cleanTemps
+}
+
+#######################################
+# Entry point:
+kuSlack-recipeProcess
+
+###############################################################################
+# @{KUFLAV_NAME} Kustom Slackware - End of the recipe.
+###############################################################################

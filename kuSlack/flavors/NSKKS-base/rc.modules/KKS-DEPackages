@@ -1,0 +1,25 @@
+#KKS-DEPackages
+###############################################################################
+# Kommando Kustom Slackware - Desktop Environment Packages Operations.
+# ----------------------------------------------------------------------------
+# This script provides shortcuts to install Desktop Environment packages.
+###############################################################################
+
+
+###############################################################################
+# XFCE
+###############################################################################
+
+#######################################
+kks-live-install-xfce () {
+    kks-live-installSlackwareCollectionsUpTo "$KKS_XBASE_SLACK_COLLECTIONS:xfce" "${1:-REC}"
+}
+
+###############################################################################
+# KDE
+###############################################################################
+
+#######################################
+kks-live-install-kde () {
+    kks-live-installSlackwareCollectionsUpTo "$KKS_XBASE_SLACK_COLLECTIONS:kde" "${1:-REC}"
+}

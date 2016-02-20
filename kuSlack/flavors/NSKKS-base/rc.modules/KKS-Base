@@ -1,0 +1,20 @@
+#KKS-Base
+###############################################################################
+# Kommando Kustom Slackware - Base features.
+# ----------------------------------------------------------------------------
+# This script provides the basic internals for KKS.
+###############################################################################
+
+######################################
+# $1 -> acceptance level tag (ADD,REC,OPT):
+# stdout <- level digit [0..2]
+slackTagToLevel () {
+    local accTag="$1"
+    case "$accTag" in
+	'ADD') echo "0" ;;
+	'REC') echo "1" ;;
+	'OPT') echo "2" ;;
+	*) nsk-error "Invalid Slackware tag [$accTag] !" ;;
+    esac
+}
+

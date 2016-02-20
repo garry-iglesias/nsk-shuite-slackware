@@ -1,0 +1,133 @@
+###############################################################################
+# The Squashing mechanism.
+###############################################################################
+readonly SQUASH_BASE_ID=10
+# We use the 'bootinst' dir as "warmup" lowerdir.
+KSL_SQUASH_LO="$KOOK_BOOT"
+KSL_SQUASH_CNT=0
+#######################################
+_kook-squasherEnv () {
+    KOOK_DATA_SQUASH_ROOT="$KOOK_DATA/$KOOK_VOLUME_NAME"
+}
+#######################################
+# $1 -> order id
+# $2 -> module name
+# $3 -> module version
+_kook-squashModulePath () {
+    local sqshDir="$KOOK_DATA_SQUASH_ROOT/system" sqModOrder
+    sqModOrder="$(printf '%04d' $1)"
+    local modPath="$sqshDir/${sqModOrder}-${2}-${3}.sxz"
+    nsk-checkDir "$sqshDir"
+    echo "$modPath"
+}
+#######################################
+_kuSlack-newModuleEnv () {
+    KSL_CURSQUASH_ID=$(( SQUASH_BASE_ID + KSL_SQUASH_CNT++ ))
+    KSL_CURSQUASH_NAME="@{KOOK_LIVE_NAME}.$KSL_CURSQUASH_ID"
+    KSL_CURSQUASH_DIR="$KOOK_OVEN/$KSL_CURSQUASH_NAME"
+    KSL_CURSQUASH_MODULE="$(_kook-squashModulePath "$KSL_CURSQUASH_ID" "kuSlack${KSL_CURSQUASH_ID}" "test")"
+}
+#######################################
+_kuSlack-bootModuleEnv () {
+    KSL_CURSQUASH_ID=0
+    KSL_CURSQUASH_DIR="$KOOK_BOOT"
+    KSL_CURSQUASH_MODULE="$(_kook-squashModulePath 0 "kuSlackBoot" "test")"
+    KSL_SQUASH_LO="${KSL_SQUASH_LO%:$KOOK_BOOT}"
+}
+#######################################
+_kuSlack-endModuleEnv () {
+    unset KSL_CURSQUASH_ID \
+	  KSL_CURSQUASH_NAME \
+	  KSL_CURSQUASH_DIR \
+	  KSL_CURSQUASH_MODULE
+}
+#######################################
+_kuSlack-remountSquashDir () {
+    nsk-resetDir "$KSL_CURSQUASH_DIR"
+    mount -t squashfs -o loop "$KSL_CURSQUASH_MODULE" "$KSL_CURSQUASH_DIR"
+    # Prepend the module to the squash stack:
+    [[ -n "$KSL_SQUASH_LO" ]] \
+	&& KSL_SQUASH_LO="$KSL_CURSQUASH_DIR:$KSL_SQUASH_LO" \
+	    || KSL_SQUASH_LO="$KSL_CURSQUASH_DIR"
+}
+#######################################
+_kuSlack-resetSquashOverlay () {
+    nsk-log "Resetting overlays..."
+    local traceDir=0 effDir
+    umount "$KOOK_LIVE" 2>"$KOOK_ERROUT" || :
+    umount "$KOOK_BOOT" 2>"$KOOK_ERROUT" || :
+    if (( traceDir )) ; then
+	echo "Seeking: $KOOK_LIVE into" >&2
+	mount | sed -e 's,^,[DUMP] ,g' >&2
+    fi
+    effDir="$(cd "${KOOK_LIVE%/*}" && pwd -P)/@{KOOK_LIVE_NAME}"
+    mount | grep "$effDir" \
+	| sed -e "s,^.* on \(.*\) type.*$,\1,g" \
+	| while IFS= read mntDir || [[ -n "$mntDir" ]]
+    do (( !traceDir )) || echo "$mntDir" ; umount "$mntDir" ; done
+}
+#######################################
+_kuSlack-mountLiveOverlay () {
+    mkdir -p "$KSL_CURSQUASH_DIR"
+    umount "$KOOK_LIVE" 2>/dev/null || :
+    mount -t overlay \
+	-o "lowerdir=$KSL_SQUASH_LO,upperdir=$KSL_CURSQUASH_DIR,workdir=$KOOK_LIVE_OVL" \
+	overlay "$KOOK_LIVE"
+}
+#######################################
+_kuSlack-startSquashModule () {
+    _kuSlack-newModuleEnv
+    nsk-log "==> Start squash module ($KSL_CURSQUASH_ID)."
+    _kuSlack-mountLiveOverlay
+}
+#######################################
+_kuSlack-reuseSquashModule () {
+    _kuSlack-newModuleEnv
+    nsk-log "==> Reload squash module ($KSL_CURSQUASH_ID)."
+    _kuSlack-remountSquashDir
+    _kuSlack-endModuleEnv
+}
+#######################################
+_kuSlack-startLiveBootModule () {
+    nsk-log "==> Start live boot module."
+    _kuSlack-bootModuleEnv
+    _kuSlack-mountLiveOverlay
+}
+#######################################
+_kuSlack-reuseBootModule () {
+    _kuSlack-bootModuleEnv
+    _kuSlack-remountSquashDir
+    _kuSlack-endModuleEnv
+}
+#######################################
+_kuSlack-endSquashModule () {
+    if [[ -n "${KSL_CURSQUASH_ID:-}" ]] ; then
+	nsk-log "==> Squashing live file system..."
+	# Make the squash file:
+	mksquashfs "$KSL_CURSQUASH_DIR" "$KSL_CURSQUASH_MODULE" \
+	    -noappend -comp 'xz' -b 1M
+	# Remount the squash file to the original directory:
+	_kuSlack-remountSquashDir
+	_kuSlack-endModuleEnv
+    else nsk-error "No Squash module active !"
+    fi
+}
+#######################################
+_kuSlack-reloadOverlayStack () {
+    nsk-log "Reloading overlay stack..."
+    # Reset counter:
+    KSL_SQUASH_LO="$KOOK_BOOT"
+    KSL_SQUASH_CNT=0
+    # Enumerate live overlays:
+    local overlayList
+    overlayList="$(find "${KOOK_LIVE%/*}" -name '@{KOOK_LIVE_NAME}.*' -type d | grep '\.[0-9]\+$')"
+    # And mount them:
+    while IFS= read layer || [[ -n "$layer" ]]
+    do
+	_kuSlack-newModuleEnv
+	nsk-log "* Mounting '${layer##*/}' with '${KSL_CURSQUASH_MODULE##*/}'"
+	mount -t squashfs -o loop "$KSL_CURSQUASH_MODULE" "$KSL_CURSQUASH_DIR"
+	KSL_SQUASH_LO="$KSL_CURSQUASH_DIR:$KSL_SQUASH_LO"
+    done <<<"$overlayList"
+    _kuSlack-endModuleEnv
+}

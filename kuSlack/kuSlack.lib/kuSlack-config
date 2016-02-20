@@ -1,0 +1,139 @@
+#kuSlack-config
+###############################################################################
+# KUSTOM SLACKWARE - CONFIGURATION MODULE -
+###############################################################################
+
+#######################################
+# Kustom Slackware Configuration Path:
+KUSLACK_CONFIG_PATH="${KUSLACK_CONFIG_PATH:-${HOME}/etc/kuSlack.conf}"
+
+#######################################
+kuSlack-loadConf () {
+    if [[ -f "$KUSLACK_CONFIG_PATH" ]] ; then
+	local configDir
+	configDir="$(cd "${KUSLACK_CONFIG_PATH%/*}" && pwd)"
+	verbose-echo "KuSlack: Loading configuration [${KUSLACK_CONFIG_PATH}]."
+	# Load the stored configuration:
+	source "$KUSLACK_CONFIG_PATH"
+	# Finish configuration:
+	if [[ -n "${KUSLACK_FLAVORS:-}" ]] ; then
+	    KUSLACK_FLAVORS="$(nsk-rel2abs "$configDir" "$KUSLACK_FLAVORS")"
+	    verbose-echo "KuSlack: Flavor directory [${KUSLACK_FLAVORS}]."
+	    if [[ -n "${KUSLACK_KITCHEN:-}" ]] ; then
+		KUSLACK_KITCHEN="$(nsk-rel2abs "$configDir" "$KUSLACK_KITCHEN")"
+		: # Ok ?
+	    else nsk-error "Missing Kitchen path KUSLACK_KITCHEN !"
+	    fi
+	else nsk-error "Missing Flavor path KUSLACK_FLAVORS !"
+	fi
+    else nsk-error "Configuration not found at: '${KUSLACK_CONFIG_PATH}'"
+    fi
+}
+
+###############################################################################
+# Kustom Slackware: Configuration setting.
+###############################################################################
+
+#######################################
+# Configure Kustom Slackware:
+kuSlack-configure () {
+    # Notify user:
+    cat <<CONFIGURE_BANNER
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- NoStress Kommando - Kustom Slackware
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We will configure *Kustom Slackware*.
+
+Configuration file path:
+${KUSLACK_CONFIG_PATH}
+
+If you want to use another configuration file, set the variable
+'KUSLACK_CONFIG_PATH' in your environment.
+
+CONFIGURE_BANNER
+
+    # Check environment:
+    [[ -n "${EDITOR:-}" ]] || cat <<WARN_NO_EDITOR
+Warning: the variable EDITOR is empty. If you want interactive
+configuration edition, you should setup this variable to your
+prefered environment.
+
+WARN_NO_EDITOR
+
+    # Wait user confirmation:
+    cat <<CONFIGURE_CONFIRM
+To continue with configuration, press <ENTER>...
+To abort, hit <CONTROL> + <C>
+CONFIGURE_CONFIRM
+    read -s &>/dev/null
+
+    # Create default configuration file if missing:
+    if ! [[ -f "$KUSLACK_CONFIG_PATH" ]] ; then
+	# Create parent directory if needed:
+	local parentDir
+	parentDir="$(dirname "$KUSLACK_CONFIG_PATH")"
+	[[ -d "$parentDir" ]] || mkdir -p "$parentDir"
+	# And create the configuration file:
+	cat >"$KUSLACK_CONFIG_PATH" <<DEFAULT_CONFIGURATION
+###############################################################################
+# NoStress Kustom Slackware Configuration File.
+###############################################################################
+# This file is source from within 'kuSlack' command to configure it.
+# It is a BASH script.
+###############################################################################
+
+#######################################
+# Flavor root directory.
+# This is where kuSlack will search for kustom
+# flavors.
+# Note: kuSlacks's stock 'flavors' directory is
+# also always used to lookup flavors.
+KUSLACK_FLAVORS="\${HOME}/.urSlack/flavors"
+#KUSLACK_FLAVORS='/usr/share/urlack/flavors'
+#KUSLACK_FLAVORS="\${HOME}/some/repo/urSlack.flavors"
+#KUSLACK_FLAVORS='/or/any/other/path'
+
+#######################################
+# Kitchen directory.
+# This is the intermediate working files
+# root directory.
+KUSLACK_KITCHEN="\${HOME}/.kuSlack/kitchen"
+#KUSLACK_KITCHEN='/var/kuSlack/kitchen'
+
+#######################################
+# You may want to override default kitchen
+# service (where ISO are generated).
+#KUSLACK_SERVICE="\${KUSLACK_KITCHEN}/dishes"
+#KUSLACK_SERVICE='/srv/www/urSlack/releases'
+#KUSLACK_SERVICE='/do/I/need/to/repeat'
+
+###############################################################################
+# Although it is not recommended to do it "for free", you can setup common
+# flavors variables here, as this script is also included from the recipes.
+#
+# WARNING: You should do this only if you understand what's going on. Messing
+# up with environment might lead to a broken pipeline, and to track the problem
+# you need to be an "expert" in shell scripting (and programming in general).
+#
+# Typical case of usage, is to provide the "local" path to slackware
+# repositories or a fixed version. That's true if you only work on a single
+# version with a single repository.
+# In many case, it's better to leave the local settings in an "external user
+# script" who setup the local environment sources from '.bashrc' or equivalent.
+# But it might makes sense on an automated flavor generation on some 'build
+# machine' with a 'build user' setup.
+# Anyway, choice is yours, and remember that with great power comes great
+# responsabilities.
+###############################################################################
+
+DEFAULT_CONFIGURATION
+
+    else verbose-echo " * Configuration file already present..."
+    fi
+
+    # Invoke user's editor on configuration:
+    [[ -z "${EDITOR:-}" ]] || eval ${EDITOR} "$KUSLACK_CONFIG_PATH"
+
+    # Configuration is done ?
+}

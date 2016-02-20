@@ -1,0 +1,9 @@
+###############################################################################
+# NoStress Kommando Shell Suite - Git Ignore Rules.
+###############################################################################
+
+# Temporary files:
+*~
+
+# Legacy reference:
+nsk-kustom-slack/

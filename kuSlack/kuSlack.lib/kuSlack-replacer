@@ -1,0 +1,37 @@
+#kuSlack-replacer
+###############################################################################
+
+######################################
+# stdout <- replacer filter script path.
+nsk-new-replacer () {
+    local replacer
+    replacer="$(nsk-temp)"
+    echo "$replacer"
+    cat >>"$replacer" <<REPLACER_HEAD
+#!/bin/sh
+sed \\
+REPLACER_HEAD
+    chmod +x "$replacer"
+}
+
+######################################
+# $1 -> replacer path
+# $2 -> string to replace
+# $3 -> string to substitute
+nsk-add-replace () {
+    local replacer="$1" ; shift
+    while [[ -n "${1:-}" ]] ; do
+	echo "-e 's,$1,$2,g' \\" >>"$replacer"
+	shift 2
+    done
+}
+
+######################################
+# stdin -> source text.
+nsk-close-replacer () { echo "#" >>"$1" ; }
+
+######################################
+# stdin -> source text.
+# $1 -> replacer path.
+# stdout <- substituted text.
+nsk-close-and-replace () { echo "#" >>"$1" ; "$1" ; }

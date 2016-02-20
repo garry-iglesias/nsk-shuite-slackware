@@ -1,0 +1,10 @@
+###############################################################################
+# Kustom Slackware Sanity Check:
+###############################################################################
+[[ -n "${KOOK_REPO_ROOT:-}" ]] \
+   || nsk-error "Flavor did not specified a Slackware repository !"
+[[ -n "${KOOK_APP_ID:-}" ]] \
+   || nsk-error "Flavor did not specified any Application ID (volume header) !"
+[[ -n "${KOOK_VOLUME_NAME:-}" ]] \
+   || nsk-error "Flavor did not specified any Volume name !"
+

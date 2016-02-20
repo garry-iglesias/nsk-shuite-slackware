@@ -1,0 +1,111 @@
+#isolinux's 'rc.flavor'
+###############################################################################
+# NoStress Kustom Slackware Flavor - isolinux Run Commands script.
+###############################################################################
+#  ___         _ _                ___
+# |_ _|___ ___| (_)_ _ _  ___ __ | _ ) __ _ ___ ___
+#  | |(_-</ _ \ | | ' \ || \ \ / | _ \/ _` (_-</ -_)
+# |___/__/\___/_|_|_||_\_,_/_\_\ |___/\__,_/__/\___|
+#  _  __       _               ___ _         _
+# | |/ /  _ __| |_ ___ _ __   / __| |__ _ __| |____ __ ____ _ _ _ ___
+# | ' < || (_-<  _/ _ \ '  \  \__ \ / _` / _| / /\ V  V / _` | '_/ -_)
+# |_|\_\_,_/__/\__\___/_|_|_| |___/_\__,_\__|_\_\ \_/\_/\__,_|_| \___|
+#
+# This flavor unit is dedicated to assist Kustom Isolinux configuration.
+# 2016 - Garry Iglesias.
+###############################################################################
+
+###############################################################################
+# Isolinux setup interface (for flavors):
+###############################################################################
+
+#######################################
+# A bunch of isolinux files modifiers:
+# $1 -> absolute source file path.
+isolinux-setBinary () { KIL_ISOBIN="$1" ; }
+isolinux-setConfig () { KIL_ISOCFG="$1" ; }
+isolinux-setSort () { KIL_ISOSRT="$1" ; }
+isolinux-setKernelDir () { KIL_KERNELS="$1" ; }
+isolinux-setLiveKernel () {
+    KIL_LIVEKERNEL_SRC="$1"
+    KIL_LIVEKERNEL_TGTNAME="$2"
+}
+
+#######################################
+# Isolinux "auto-configuration" generation.
+# WORK IN PROGRESS.
+#isolinux-autoConfig () { KIL_AUTOCONF=1 ; }
+#isolinux-addConf ()
+
+###############################################################################
+# Isolinux Internals:
+###############################################################################
+
+#######################################
+# Our hooks:
+kuSlack-kustomIsolinux-init-handler '_isolinux-init'
+kuSlack-kustomIsolinux-setup-handler '_isolinux-setup'
+
+###############################################################################
+# Isolinux Setup Handler:
+###############################################################################
+
+#######################################
+_isolinux-init () {
+    if (( KOOK_LIVE_INSTALLER )) ; then
+	# We're building an installer:
+	KOOK_DATA_ISOLINUX="${KOOK_DATA}/isolinux"
+	KOOK_DATA_ISOLINUX_INITRD_DIR="$KOOK_DATA_ISOLINUX"
+	KOOK_DATA_KERNELS="${KOOK_DATA}/kernels"
+    else
+	# We're building a Live ISO:
+	KOOK_DATA_BOOT="${KOOK_DATA}/boot"
+	KOOK_DATA_ISOLINUX="$KOOK_DATA_BOOT/syslinux"
+	KOOK_DATA_ISOLINUX_INITRD_DIR="$KOOK_DATA_BOOT"
+	KOOK_DATA_KERNELS="$KOOK_DATA_BOOT"
+    fi
+
+    # Internal state:
+    KIL_BOOTPICTURE="${KIL_BOOTPICTURE:-}"
+    KIL_ISOBIN="${KIL_ISOBIN:-$KOOK_SRC_ISOLINUX/isolinux.bin}"
+    KIL_ISOCFG="${KIL_ISOCFG:-$KOOK_SRC_ISOLINUX/isolinux.cfg}"
+    KIL_ISOSRT="${KIL_ISOSRT:-$KOOK_SRC_ISOLINUX/iso.sort}"
+    KIL_ISOEFI="${KIL_ISOEFI:-$KOOK_SRC_ISOLINUX/efiboot.img}"
+    KIL_KERNELS="${KIL_KERNELS:-$KOOK_REPO_ROOT/kernels}"
+    KIL_LIVEKERNEL_SRC="${KIL_LIVEKERNEL_SRC:-}"
+    KIL_LIVEKERNEL_TGTNAME="${KIL_LIVEKERNEL_TGTNAME:-generic}"
+}
+
+#######################################
+_isolinux-setup () {
+    # Copy files into <data>/isolinux directory:
+    _isolinux_installFiles \
+	"$KIL_ISOBIN" "$KOOK_ISO_BOOTIMAGE_1" \
+	"$KIL_ISOCFG" "$KOOK_DATA_ISOLINUX/isolinux.cfg" \
+	"$KIL_ISOEFI" "$KOOK_ISO_BOOTIMAGE_2" \
+	"$KIL_ISOSRT" "$KOOK_ISO_SORT"
+    if (( KOOK_LIVE_INSTALLER )) ; then
+	# Copy installer kernel files:
+	nsk-deleteDir "$KOOK_DATA_KERNELS"
+	cp -a "$KIL_KERNELS" "$KOOK_DATA_KERNELS"
+    else
+	# Copy live's kernel:
+	#TODO: We should allow multiple kernels...
+	nsk-checkDirs "$KOOK_DATA_KERNELS"
+	cp -a "$KIL_LIVEKERNEL_SRC" "$KOOK_DATA_KERNELS/$KIL_LIVEKERNEL_TGTNAME"
+    fi
+}
+
+#######################################
+# Some internal functions:
+#_kil_cpisol () { [[ -z "$1" ]] || cp -a "$1" "$KOOK_DATA_ISOLINUX/${1##*/}" ; }
+#_kil_cpisols () { local i ; for i ; do _kil_cpisol "$i" ; done ; }
+#_kil_cpisol_as () { [[ -z "$1" ]] || cp -a "$1" "$KOOK_DATA_ISOLINUX/$2" ; }
+_isolinux_installFiles () {
+    local src tgt
+    while [[ -n "${1:-}" ]] ; do
+	src="$1" ; tgt="$2" ; shift 2
+	#nsk-log "ISOLINUX: '$src' -> '$tgt'"
+	cp -a "$src" "$tgt"
+    done
+}

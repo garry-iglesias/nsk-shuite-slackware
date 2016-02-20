@@ -1,0 +1,241 @@
+#kuSlack-kommands
+###############################################################################
+# KUSTOM SLACKWARE - KOMMANDS MODULE -
+###############################################################################
+
+#######################################
+kuSlack-version () {
+    "${LU_CAT}" <<KUSLACK_VER
+NoStress Kustom-Slackware - Garry Iglesias - 2013-2016.
+Version: ${KUSLACK_VERSION}
+KUSLACK_VER
+}
+
+#######################################
+kuSlack-help () {
+    "${LU_CAT}" <<HELP_MESSAGE
+Usage:
+
+    \$ ${SCRIPT_NAME} [options] <command> [args [...]]
+
+Where [options] can be none or many of the following:
+    --debug, -d
+    --no-debug, -nd
+        {En|Dis}able debug (variable 'KUSLACK_DEBUG={0|1}')
+
+    --verbose, -v
+    --no-verbose, -nv
+        {En|Dis}able verbose (variable 'KUSLACK_VERBOSE={0|1}')
+
+    --edit, -e
+    --no-edit, -ne
+        {En|Dis}able auto-edit of files using EDITOR varialbe.
+        (variable 'KUSLACK_EDIT={0|1}')
+
+    --config <config/file/path>
+        Specify kuSlack configuration file path.
+        (Variable: 'KUSLACK_CONFIG_PATH=/some/path')
+
+    --here ,-H
+        Load config in current directory.
+        (Variable: 'KUSLACK_CONFIG_PATH=\$(pwd)/kuSlack.conf')
+
+    --this <configname>
+        Load a named configuration in current directory.
+        (Variable: 'KUSLACK_CONFIG_PATH=\$(pwd)/<configname>')
+
+And <command> can be one of the following:
+    -V, --version         Print version (${KUSLACK_VERSION})
+    -h, --help, help      This help message.
+    make-env              Generate an environment script.
+    configure             Configure Kustom Slackware.
+    list-flavors          List available flavors.
+    new-flavor            Create a new KuSlack flavor.
+    edit-flavor           Edit a KuSlack flavor with your \$EDITOR.
+    cook [options]        Prepare a KuSlack flavor.
+        --exec-recipe, -x    Execute recipe after generation
+                             (variable KUSLACK_EXECUTE_RECIPE={0|1})
+        --inject-scripts ,-i Inject user script in recipe script.
+                             (variable KUSLACK_INCLUDE_USER_SCRIPTS={0|1})
+
+    Advanced: 'new-flavor', 'edit-flavor' and 'cook' can have the '--stock'
+    prefix to the flavor name to reference a kuSlack 'stock' flavor.
+
+Nomenclature:
+  [Flavor]  -> The Slackware specialized test.
+  [Kitchen] -> The file system location where all cooking is done.
+  [Cooking] -> Simply the act of building a kustom flavor.
+  [Oven]    -> Where are stored the cooking ingredients (inside the [Kitchen]).
+  [Dish]    -> Where are stored cooking plates (still inside the [Kitchen])
+
+Some configuration variables:
+
+KUSLACK_CONFIG_PATH    Where kuSlack look for its configuration.
+KUSLACK_FLAVORS        Root directories for kustom flavors.
+KUSLACK_KITCHEN        Kitchen's root directory.
+
+Some files and directories:
+
+ * Flavors:
+   \$KUSLACK_FLAVORS/*  Kustom flavors 'catalog'
+
+   In a flavor (\$KUSLACK_FLAVORS/some-flavor/*):
+     ../$KUFLAV_RC_NAME   The flavor's run script.
+     ../$KUFLAV_DEPS_NAME The flavor's dependencies.
+
+ * Kitchen:
+   \$KUSLACK_KITCHEN/${KITCHEN_OVEN_NAME}   The working root.
+   \$KUSLACK_KITCHEN/${KITCHEN_DISHES_NAME} The target root.
+
+ * Internals:
+   ${SCRIPT_DIR}/flavors
+     The stock flavors root.
+
+HELP_MESSAGE
+}
+
+#######################################
+kuSlack-makeEnv () {
+    local envFile
+    envFile="$(mktemp)"
+    cat >>"$envFile" <<KUSLACK_ENV
+###############################################################################
+# Kustom Slackware Environment Script.
+###############################################################################
+
+# Append path:
+export PATH="${SCRIPT_DIR/$HOME/\$HOME}:\$PATH"
+
+# Configuration path:
+export KUSLACK_CONFIG_PATH="${KUSLACK_CONFIG_PATH/$HOME/\$HOME}"
+
+KUSLACK_ENV
+    echo "$envFile"
+    verbose-cat >&2 <<ENV_HINT
+You can source the environment file:
+
+\$ source '${envFile}'
+
+Or append it somewhere:
+
+\$ cat '${envFile}' >>~/.bashrc
+
+And you may want to clean it :)
+
+\$ rm '${envFile}'
+
+ENV_HINT
+}
+
+#######################################
+# List Flavors:
+kuSlack-listFlavors () {
+    cd "$KUFLAV_STOCK_FLAVORS"
+    find . -type d -mindepth 1 -maxdepth 1 | cut -b3- \
+	| sed -e 's,^,stock:,g'
+    cd "$KUSLACK_FLAVORS"
+    find . -type d -mindepth 1 -maxdepth 1 | cut -b3-
+}
+
+#######################################
+# Apply a command to a flavor:
+# $1 -> command to apply
+# $2-.. -> flavor arguments
+kuSlack-flavorApply () {
+    local flavKmd="$1" flavArg flavCount=0 flavBase="$KUSLACK_FLAVORS"
+    shift
+    # Parse flavor args:
+    while [[ -n "${1:-}" ]] ; do
+	flavArg="$1" ; shift
+	case "$flavArg" in
+	    '--stock') flavBase="$KUFLAV_STOCK_FLAVORS" ;;
+	    '--conf') flavBase="$KUSLACK_FLAVORS" ;;
+	    '-'*) nsk-error "kuSalck/new flavor: invalid argument '$flavArg'" ;;
+	    *) (( ++flavCount )) ; "$flavKmd" "$flavBase" "$flavArg" ;;
+	esac
+    done
+    (( flavCount )) || nsk-error "Error: missing flavor name..."
+}
+
+
+#######################################
+# Create new flavors:
+kuSlack-newFlavor () {
+    kuSlack-flavorApply kuFlavor-init "$@"
+}
+
+#######################################
+# Edit flavors:
+kuSlack-editFlavor () {
+    if [[ -n "${EDITOR:-}" ]] ; then
+	kuSlack-flavorApply kuFlavor-edit "$@"
+    else nsk-error "No EDITOR variable defined !"
+    fi
+}
+
+#######################################
+# Cook flavors:
+kuSlack-cookFlavor () {
+    local cookArg
+    while [[ "${1:-}" ]] ; do
+	cookArg="$1"
+	case "$cookArg" in
+	    '--exec-recipe'|'-x') KUSLACK_EXECUTE_RECIPE=1 ; shift ;;
+	    '--inject-scripts'|'-i') KUSLACK_INCLUDE_USER_SCRIPTS=1 ; shift ;;
+	    *) break ;;
+	esac
+    done
+    kitchen-context
+    kuSlack-flavorApply kuSlack-cook "$@"
+    kitchen-context-shut
+}
+
+###############################################################################
+# Command-Line Parsing:
+###############################################################################
+
+#######################################
+# Kommand configuration wrapper:
+xecKom () { (( ++komCnt )) ; kuSlack-loadConf ; "$@" ; }
+
+#######################################
+kuSlack-scanArgs () {
+    local curArg komCnt=0
+    while [[ -n "${1:-}" ]] ; do
+	curArg="$1" ; shift
+	case "$curArg" in
+	    '-h'|'--help'|'help') (( ++komCnt )) ; kuSlack-help ; break ;;
+	    '--version'|'-V') (( ++komCnt )) ; kuSlack-version ; break ;;
+	    # Flags:
+	    '--debug'|'-d') KUSLACK_DEBUG=1 ;;
+	    '--no-debug'|'-nd') KUSLACK_DEBUG=0 ;;
+	    '--verbose'|'-v') KUSLACK_VERBOSE=1 ;;
+	    '--no-verbose'|'-nv') KUSLACK_VERBOSE=0 ;;
+	    '--edit'|'-e') KUSLACK_EDIT=1 ;;
+	    '--no-edit'|'-ne') KUSLACK_EDIT=0 ;;
+	    '--here'|'-H')  KUSLACK_CONFIG_PATH="$SCRIPT_LAUNCH_DIR/kuSlack.conf" ;;
+	    # Parameters:
+	    '--this') KUSLACK_CONFIG_PATH="$SCRIPT_LAUNCH_DIR/$1" ; shift ;;
+	    '--config') KUSLACK_CONFIG_PATH="$1" ; shift ;;
+	    # Kommands:
+	    'make-env') (( ++komCnt )) ; kuSlack-makeEnv "$@" ; break ;;
+	    'configure') (( ++komCnt )) ; kuSlack-configure "$@" ; break ;;
+	    'list-flavors') xecKom kuSlack-listFlavors "$@" ; break ;;
+	    'new-flavor') xecKom kuSlack-newFlavor "$@" ; break ;;
+	    'edit-flavor') xecKom kuSlack-editFlavor "$@" ; break ;;
+	    'cook') xecKom kuSlack-cookFlavor "$@" ; break ;;
+            *) nsk-error "Unknown argument: '${curArg}' !" ;;
+	esac
+    done
+    (( komCnt )) || cat-err <<NO_KOMMAND
+Warning: you didn't specified any kuSlack command as argument !
+Usage:
+
+     \$ ${SCRIPT_NAME} [options] <command> [args [...]]
+
+Try: \$ ${SCRIPT_NAME} help
+
+NO_KOMMAND
+    # Be a big boy:
+    nsk-cleanTemps
+}

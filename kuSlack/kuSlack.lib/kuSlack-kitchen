@@ -1,0 +1,25 @@
+#kuSlack-kitchen
+###############################################################################
+# KUSTOM SLACKWARE - KITCHEN MODULE -
+###############################################################################
+
+#######################################
+# Kitchen Layout:
+readonly KITCHEN_OVEN_NAME='oven'
+readonly KITCHEN_DISHES_NAME='dishes'
+
+###############################################################################
+# Kitchen Context:
+###############################################################################
+
+#######################################
+kitchen-context () {
+    KITCHEN_OVEN="${KUSLACK_KITCHEN}/${KITCHEN_OVEN_NAME}"
+    KITCHEN_DISHES="${KUSLACK_SERVICE:-$KUSLACK_KITCHEN/$KITCHEN_DISHES_NAME}"
+}
+
+#######################################
+kitchen-context-shut () {
+    unset \
+	KITCHEN_OVEN KITCHEN_DISHES
+}

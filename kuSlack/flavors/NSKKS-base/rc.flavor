@@ -1,0 +1,179 @@
+###############################################################################
+# NoStress Kustom Slackware Flavor - NSK Kustom Slackware Run Commands script.
+###############################################################################
+#  _  _     ___ _                   _  __                             _
+# | \| |___/ __| |_ _ _ ___ ______ | |/ /___ _ __  _ __  __ _ _ _  __| |___
+# | .` / _ \__ \  _| '_/ -_|_-<_-< | ' </ _ \ '  \| '  \/ _` | ' \/ _` / _ \
+# |_|\_\___/___/\__|_| \___/__/__/ |_|\_\___/_|_|_|_|_|_\__,_|_||_\__,_\___/
+#  _  __       _               ___ _         _
+# | |/ /  _ __| |_ ___ _ __   / __| |__ _ __| |____ __ ____ _ _ _ ___
+# | ' < || (_-<  _/ _ \ '  \  \__ \ / _` / _| / /\ V  V / _` | '_/ -_)
+# |_|\_\_,_/__/\__\___/_|_|_| |___/_\__,_\__|_\_\ \_/\_/\__,_|_| \___|
+#
+# NoStress Kustom Slackware Base Flavor - Garry Iglesias - 2014-2016
+###############################################################################
+
+
+##############################################################################
+# NSKKS: Live build environment parameters:
+##############################################################################
+readonly NSKKS_LIVE_DEVMODE=${NSKKS_LIVE_DEVMODE:-0}
+
+KKS_FQDN="${KKS_FQDN:-KustomSlack.nostress.net}"
+KKS_TIMEZONE="${KKS_TIMEZONE:-UTC}"
+
+NSKKS_LIVE_KOMMANDO=${NSKKS_LIVE_KOMMANDO:-0}
+NSKKS_LIVE_KOMMANDO_INSTALLER=${NSKKS_LIVE_KOMMANDO_INSTALLER:-0}
+NSKKS_KOMMANDO_TMUX=${NSKKS_KOMMANDO_TMUX:-1}
+NSKKS_KOMMANDO_EMACS=${NSKKS_KOMMANDO_EMACS:-0}
+
+##############################################################################
+# NSKKS: Some "Live Installer" API:
+##############################################################################
+
+######################################
+nskks-live-activateKommandoInstaller () { NSKKS_LIVE_KOMMANDO_INSTALLER=1 ; }
+nskks-live-activateKommando () { NSKKS_LIVE_KOMMANDO=1 ; }
+
+######################################
+nskks-live-installSlackMinimal () {
+    _kks-minimal-packages | kuSlack-live-installPackages
+}
+
+######################################
+# $1 -> collection list (ie: 'a:ap:l:n')
+# $2 -> acceptance level tag (ADD,REC,OPT) -default- [REC]
+kks-live-installSlackwareCollectionsUpTo () {
+    local collList="$1" accTag="${2:-REC}" accLevel
+    accLevel=$(slackTagToLevel "$accTag")
+
+    ##################################
+    # Parse collection list:
+    ##################################
+    [[ "$collList" != '*' ]] || collList="$KKS_ALL_SLACK_COLLECTIONS"
+    nsk-log "Installing Official Slackware Collections [$collList/$accTag]..."
+    collList="$(<<<"$collList" "$LU_TR" ':' ' ')"
+    local colTag
+    for colTag in $collList
+    do
+	nsk-log " * Adding collection [$colTag]."
+	kuSlack-live-installCollection "$colTag" "$accTag"
+    done
+
+    ##################################
+    # Fix 'missing' packages:
+    ##################################
+    if (( accLevel<2 )) ; then
+	# Packages missing from default [ADD] tag:
+	_kks-stock-default-minimal-missing-packages | kuSlack-live-installPackages \
+	    || nsk-error "Failed to select minimal missing packages !"
+	# Packages missing from default [REC] tag:
+	if (( 1<=accLevel )) ; then
+	    : #TODO: Add here the missing RECommended packages
+	fi
+    fi
+}
+
+##############################################################################
+# NSKKS Internals:
+##############################################################################
+readonly NSKKS_FLAVOR_DIR="$KOOK_FLAVOR_DIR"
+readonly NSKKS_TOOLS="$NSKKS_FLAVOR_DIR/tools"
+
+#isolinux-setBinary ''
+isolinux-setConfig "$NSKKS_TOOLS/isolinux-live.cfg"
+isolinux-setSort "$NSKKS_TOOLS/isolinux-live.sort"
+
+#######################################
+kuSlack-loadModule 'KKS-Base'
+kuSlack-loadModule 'KKS-Installer'
+kuSlack-loadModule 'KKS-LiveCD'
+kuSlack-loadModule 'KKS-BasePackages'
+kuSlack-loadModule 'KKS-DEPackages'
+
+#######################################
+# Kommando Kustom Slackware Hooks:
+kuSlack-live-init-handler 'NSKKS-LiveHandler'
+kuSlack-live-setup-handler 'NSKKS-LiveSetupHandler'
+kuSlack-before-ramdisk-handler 'KKS-BeforeRD'
+kuSlack-initrd-init-handler 'NSKKS-InitRDHandler'
+kuSlack-initrd-setup-handler 'NSKKS-InitRDSetupHandler'
+
+##############################################################################
+# NSKKS: Kustom Live Handlers:
+##############################################################################
+readonly NSKKS_SLACKWARE_INSTALLER_DIR='/usr/lib/setup'
+readonly NSKKS_KUSLACK_INSTALLER_DIR='/usr/lib/kuSlack'
+readonly NSKKS_LIVE_STARTUP_PROFILE_PATH='/etc/profile'
+readonly NSKKS_LIVE_STARTUP_SCRIPT_PATH='/etc/rc.d/rc.S'
+readonly NSKKS_LIVE_KUSLACK_STARTUP_SCRIPT_PATH='/etc/rc.d/rc.kuSlack'
+
+readonly KKS_ERR_INSTALL_NEED_SLACK='NSKKS Live Installer requires the stock Slackware live base !'
+
+######################################
+# Initialize the KuSlack live image.
+NSKKS-LiveHandler () {
+    # Prepare parameters environment:
+    KKS_HOSTNAME="${KKS_FQDN%%.*}"
+    KKS_DOMAINNAME="${KKS_FQDN#*.}"
+
+    # isolinux Kernels:
+    #isolinux-setKernelDir ""
+
+    # And call the corresponding initializer:
+    if (( KOOK_LIVE_INSTALLER ))
+    then _kks-liveInit-installer
+    elif (( NSKKS_LIVE_KOMMANDO_INSTALLER ))
+    then nsk-error "$KKS_ERR_INSTALL_NEED_SLACK"
+    else
+	_kks-liveInit-liveSession
+    fi
+}
+
+######################################
+# Setup the KuSlack initrd to use
+# NoStress Kommando setup on boot.
+NSKKS-LiveSetupHandler () {
+    if (( KOOK_LIVE_INSTALLER ))
+    then _kks-liveSetup-installer
+    elif (( NSKKS_LIVE_KOMMANDO_INSTALLER ))
+    then nsk-error "$KKS_ERR_INSTALL_NEED_SLACK"
+    else _kks-liveSetup-liveSession
+    fi
+}
+
+######################################
+# Scan live system to setup ramdisk:
+KKS-BeforeRD () {
+    if (( KOOK_LIVE_INSTALLER )) ; then : ;
+    else _kks-liveBefore-ramdisk
+    fi
+}
+
+######################################
+# Build the KuSlack initrd.
+NSKKS-InitRDHandler () {
+    if (( KOOK_LIVE_INSTALLER )) ; then : ;
+    elif (( NSKKS_LIVE_KOMMANDO_INSTALLER ))
+    then nsk-error "$KKS_ERR_INSTALL_NEED_SLACK"
+    else _kks-initrdInit-liveSession
+    fi
+}
+
+######################################
+# Setup the KuSlack initrd.
+NSKKS-InitRDSetupHandler () {
+    if (( KOOK_LIVE_INSTALLER )) ; then : ;
+    elif (( NSKKS_LIVE_KOMMANDO_INSTALLER ))
+    then nsk-error "$KKS_ERR_INSTALL_NEED_SLACK"
+    else _kks-initrdSetup-liveSession
+    fi
+}
+
+###############################################################################
+# Some default setings:
+###############################################################################
+
+######################################
+# We propose a default repository:
+KOOK_REPO_ROOT="${KOOK_REPO_ROOT:-/repo/mirrors/slackware/slackware64-current}"

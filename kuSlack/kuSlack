@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#kuSlack
+###############################################################################
+# NoStress Kommando - Kustom Slackware - Garry Iglesias (c) 2013-2016
+###############################################################################
+#  _  _     ___ _                   _  __                             _
+# | \| |___/ __| |_ _ _ ___ ______ | |/ /___ _ __  _ __  __ _ _ _  __| |___
+# | .` / _ \__ \  _| '_/ -_|_-<_-< | ' </ _ \ '  \| '  \/ _` | ' \/ _` / _ \
+# |_|\_\___/___/\__|_| \___/__/__/ |_|\_\___/_|_|_|_|_|_\__,_|_||_\__,_\___/
+#  _  __       _               ___ _         _
+# | |/ /  _ __| |_ ___ _ __   / __| |__ _ __| |____ __ ____ _ _ _ ___
+# | ' < || (_-<  _/ _ \ '  \  \__ \ / _` / _| / /\ V  V / _` | '_/ -_)
+# |_|\_\_,_/__/\__\___/_|_|_| |___/_\__,_\__|_\_\ \_/\_/\__,_|_| \___|
+#
+# A customized Slackware "image" generator.
+# Useful to 'fork' Slackware and specialize it.
+# Can be used to deploy 'typical' workstation setup.
+# Can be used as basis for cloud deployment.
+# Can be used to generate a Live Slackware.
+# ...
+# Can also be used to bake Croissants and Pains au Chocolat, Fondue Suisse ou
+# Savoyarde, but also Haggis or Flammkuchen or Burritos...
+###############################################################################
+set -Cue
+
+readonly KUSLACK_VERSION='0.1-dev'
+
+###############################################################################
+# Running script magicks:
+###############################################################################
+readonly SCRIPT_LAUNCH_DIR="$(pwd)"
+readonly SCRIPT_NAME="$(basename "${0}")"
+readonly SCRIPT_DIR="$(cd "$(dirname "${0}")" && pwd)"
+readonly SCRIPT_PATH="${SCRIPT_DIR}/${SCRIPT_NAME}"
+
+###############################################################################
+# Module bootstrap:
+###############################################################################
+readonly KUSLACK_LIBRARY_DIRNAME='kuSlack.lib'
+readonly KUSLACK_LIBPREFIX="${SCRIPT_DIR}/${KUSLACK_LIBRARY_DIRNAME}/"
+kuMod () { source "${KUSLACK_LIBPREFIX}${1}" : ; }
+
+###############################################################################
+# Load modules:
+###############################################################################
+kuMod 'kuSlack-base'
+kuMod 'kuSlack-fileOps'
+kuMod 'kuSlack-temp'
+kuMod 'kuSlack-replacer'
+kuMod 'kuSlack-config'
+kuMod 'kuSlack-flavors'
+kuMod 'kuSlack-kitchen'
+kuMod 'kuSlack-snippets'
+kuMod 'kuSlack-cook'
+kuMod 'kuSlack-kommands'
+
+###############################################################################
+# Entry Point:
+###############################################################################
+kuSlack-scanArgs "$@"

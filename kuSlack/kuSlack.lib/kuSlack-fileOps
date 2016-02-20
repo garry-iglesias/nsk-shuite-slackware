@@ -1,0 +1,24 @@
+#kuSlack-fileOps
+###############################################################################
+# KUSTOM SLACKWARE - FILES OPERATION MODULE -
+###############################################################################
+
+#######################################
+nsk-abs2rel () {
+    local ref="$1" abs="$2"
+    local curBase="$ref" relLeft="" relRight
+    while relRight="${abs#$curBase}" \
+	    && [[ "$curBase" != "/" \
+			&& ( "$relRight" == "$abs" || "${relRight:0:1}" != "/" ) \
+		]]
+    do
+	curBase="$(dirname "$curBase")"
+	relLeft="${relLeft}../"
+    done
+    if [[ "/" == "$curBase" ]] ; then echo "$abs"
+    else echo "${relLeft}${relRight:1}"
+    fi
+}
+
+#######################################
+nsk-rel2abs () { [[ "$2" == /* ]] && echo "$2" || echo "${1}/${2}" ; }

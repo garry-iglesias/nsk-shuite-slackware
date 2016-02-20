@@ -1,0 +1,32 @@
+#KKS-Installer
+###############################################################################
+# Kommando Kustom Slackware - Kustom Slackware Install CD(/DVD)
+# ----------------------------------------------------------------------------
+# This script provides building bricks to setup a Slackware Installation ISO.
+# Historically this was the primary usage of 'kuSlack' so here is the work in
+# progress port of the legacy installer.
+#WARNING: WORK IN PROGRESS -- Not yes fully ported and tested !
+###############################################################################
+
+######################################
+_kks-liveInit-installer () {
+    (( !NSKKS_LIVE_KOMMANDO )) || _nskks-live-kommandoPackages
+}
+
+######################################
+_kks-liveSetup-installer () {
+    # Patch PATH:
+    kuSlack-live-sed "$NSKKS_LIVE_STARTUP_PROFILE_PATH" \
+	-e "s,\(:$NSKKS_SLACKWARE_INSTALLER_DIR\),$NSKKS_KUSLACK_INSTALLER_DIR:\\1,g"
+
+    # Patch the rc.S (tartup) script:
+    # Inject launch of our boot script.
+    # Then we shorcut the stock installer to drop to the command line asap...
+    # Here Pat. has fake a login, and did some interactive stuff we wanna skip
+    # and do our straightforward install.
+    kuSlack-live-sed "$NSKKS_LIVE_STARTUP_SCRIPT_PATH" \
+	-e "s,\(/bin/setterm -blank 0\),\1\n\n${NSKKS_LIVE_KUSLACK_STARTUP_SCRIPT_PATH}\nexit 0\n\n#Everything else is skipped !!!\n\n,g"
+
+    (( !NSKKS_LIVE_KOMMANDO_INSTALLER )) \
+	|| nsk-error "TODO: port the legacy Nostress slackware installer..."
+}

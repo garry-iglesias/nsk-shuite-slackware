@@ -1,0 +1,16 @@
+#kuSlack-temp
+###############################################################################
+
+###############################################################################
+# TEMPS:
+###############################################################################
+NSK_TEMPTAB="$($LU_MKTEMP)"
+nsk-temp () { local tmp="$($LU_MKTEMP)" ; echo "$tmp" ; echo "$tmp" >>"$NSK_TEMPTAB" ; }
+nsk-cleanTemps () {
+    if [[ -f "$NSK_TEMPTAB" ]] ; then
+	local tmp
+	while IFS= read tmp ; do rm "$tmp" ; done <"$NSK_TEMPTAB"
+	rm "$NSK_TEMPTAB"
+    else echo "NSKTEMPS! Temporary table has been lost !" >&2
+    fi
+}

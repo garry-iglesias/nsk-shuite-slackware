@@ -1,0 +1,51 @@
+###############################################################################
+# Kustom Slackware System Functions:
+###############################################################################
+nsk-error () {
+    echo "ERROR:" "$@" >&2
+    dbg-dumpEnv "ERROR [$1]" 
+    #nsk-cleanTemps
+    exit 1
+}
+nsk-log () { echo "[@{KUFLAV_NAME}]" "$@" ; }
+nsk-checkDir () { [[ -d "$1" ]] || mkdir -p "$1" ; }
+nsk-deleteDir () { [[ ! -d "$1" ]] || rm -rf "$1" ; }
+nsk-resetDir () { nsk-deleteDir "$1" && mkdir -p "$1" ; }
+nsk-checkDirs () { local d ; for d ; do [[ -d "$d" ]] || mkdir -p "$d" ; done ; }
+nsk-resetDirs () { local d ; for d ; do nsk-resetDir "$d" ; done ; }
+nsk-deleteFiles () { local f ; for f ; do [[ ! -f "$f" ]] || rm -f "$f" ; done ; }
+nsk-resetFiles () { local f ; for f ; do [[ ! -f "$f" ]] || rm -f "$f" ; touch "$f" ; done ; }
+echo-err () { echo "$@" >&2 ; }
+cat-err () { "$LU_CAT" "$@" >&2 ; }
+chk-abs () { [[ "$1" == /* ]] || nsk-error "Not an absolute path: '$1'" ; }
+nsk-unhashComment () { "$LU_SED" -e 's,#.*$,,g' ; }
+nsk-unemptyLines () { "$LU_GREP" -v '^[ \t]*$' ; }
+nsk-cleanSource () { nsk-unhashComment | nsk-unemptyLines ; }
+##findSedExpr () { "$LU_FIND" "$1" -type f -regextype sed -regex "$2" ; }
+
+###############################################################################
+# Debug:
+###############################################################################
+if (( KUSLACK_DEBUG )) ; then
+    KOOK_DEBUG_LOG="$KOOK_OVEN/debug.log"
+    nsk-resetFiles "$KOOK_DEBUG_LOG"
+    echo-err "DEBUG LOG FILE: $KOOK_DEBUG_LOG"
+    dbg-log () { echo "$@" >>"$KOOK_DEBUG_LOG" ; }
+    dbg-dumpEnv () {
+	local dumpTag="$1"
+	cat >>"$KOOK_DEBUG_LOG" <<DUMPENV_HEAD
+===============================================================================
+ ENVIRONMENT DUMP START [$dumpTag]
+===============================================================================
+DUMPENV_HEAD
+	(set -o posix ; set) | grep -v 'dumpTag' >>"$KOOK_DEBUG_LOG"
+	cat >>"$KOOK_DEBUG_LOG" <<DUMPENV_TAIL
+===============================================================================
+ ENVIRONMENT DUMP END [$dumpTag]
+===============================================================================
+DUMPENV_TAIL
+    }
+else # Just some dummies:
+    dbg-log () { : ; }
+    dbg-dumpEnv () { : ; }
+fi

@@ -1,0 +1,270 @@
+#KKS-BasePackages
+###############################################################################
+# Kommando Kustom Slackware - Base Slackware Packages Operations.
+# ----------------------------------------------------------------------------
+# This script provides shortcuts to install packages.
+###############################################################################
+
+##############################################################################
+# NSKKS: Some default package groups definitions:
+##############################################################################
+
+readonly KKS_ALL_SLACK_COLLECTIONS='a:ap:d:e:f:kde:l:n:t:tcl:x:xap:xfce'
+readonly KKS_TERMINAL_SLACK_COLLECTIONS='a:ap:d:e:f:l:n:t:tcl'
+readonly KKS_XBASE_SLACK_COLLECTIONS='a:ap:l:x:xap'
+
+######################################
+# What we MUST have anyway...
+_kks-extreme-core-packages () {
+    cat <<XTREM_CORE
+# You can't cope with:
+aaa_base
+aaa_elflibs
+ash
+bash
+bin
+coreutils
+cpio
+dcron
+dev86
+devs
+etc
+eudev
+findutils
+gawk
+grep
+gzip
+libevent
+libtermcap
+ncurses
+procps-ng
+sed
+shadow
+sysklogd
+sysvinit
+sysvinit-scripts
+tar
+utempter
+util-linux
+which
+
+# The C native library:
+glibc
+#glibc-solibs
+#glibc-zoneinfo
+
+# Some network basics:
+ca-certificates
+curl
+dhcp
+ethtool
+iptables
+iproute2
+net-tools
+network-scripts
+tcpdump
+telnet
+traceroute
+wget
+whois
+
+# Kernel packages:
+#kernel-firmware
+kernel-generic
+kernel-headers
+kernel-modules
+kmod
+
+# Captain obvious remind me of this one...
+syslinux
+mkinitrd
+XTREM_CORE
+}
+
+######################################
+# What is NOT tagged as [ADD] BUT required
+# by [ADD] tagged packages...
+_kks-stock-default-minimal-missing-packages () {
+    cat <<SLACK_MIN_FIX
+# ConsoleKit:
+cgmanager
+libnih
+SLACK_MIN_FIX
+}
+
+######################################
+# Install packages usefull for "live"
+# development (debugging/hacking).
+#   + tmux
+#   + emacs
+#   + kommando pack (live feedback to dev workstation).
+_nskks-live-kommandoPackages () {
+    if (( NSKKS_KOMMANDO_TMUX )) ; then
+	# TMUX is a MUST.
+	kuSlack-live-installPkg utempter
+	kuSlack-live-installPkg libevent
+	kuSlack-live-installPkg tmux
+    fi
+
+    if (( NSKKS_KOMMANDO_EMACS )) ; then
+	echo-err "Emacs can't be installed for now."
+	# Emacs for fat LIVE :)
+	# kuSlack-live-installPkg aaa_elflibs
+	# kuSlack-live-installPkg dbus
+	# kuSlack-live-installPkg gpm
+	# kuSlack-live-installPkg libxml2
+	# kuSlack-live-installPkg gnutls
+	# kuSlack-live-installPkg nettle
+	# kuSlack-live-installPkg p11-kit
+	# kuSlack-live-installPkg emacs
+    fi
+
+    # The kommando pack...
+#    nsks.initrd.addFile 'devel/nsk-kommando-pack'    "$NSKKS_KUSLACK_INSTALLER_DIR"
+#    nsks.initrd.addFile 'devel/nsk-kommando-refresh' "$NSKKS_KUSLACK_INSTALLER_DIR"
+}
+
+######################################
+# This activates the NoStress KommandOS
+# Kustom Slackware setup.
+_nskks-live-buildKommandoInstaller () {
+    # We need some stock packages...
+    kuSlack-live-installPkg a bash
+    kuSlack-live-installPkg a file
+    kuSlack-live-installPkg ap nano
+
+    # Live development packages...
+    (( !NSKKS_LIVE_DEVMODE )) || nskks.useNoStressDevMode
+
+    # Configure initrd for "live" NoStress Setip:
+    nskks.nssetup.makeLive
+}
+
+######################################
+_kks-minimal-packages () {
+    _kks-extreme-core-packages
+    cat <<MINIMAL_PACKAGES
+#ABob's min list:
+aaa_base
+aaa_elflibs
+aaa_terminfo
+ash
+acl
+attr
+bash
+bin
+binutils
+bison
+# #bsd-games
+bzip2
+ca-certificates
+coreutils
+cpio
+cryptsetup
+#cxxlibs
+cyrus-sasl
+dcron
+dev86
+devs
+dhcpcd
+dialog
+diffutils
+dmidecode
+e2fsprogs
+elvis
+etc
+eudev
+file
+findutils
+flex
+floppy
+gawk
+gc
+gcc
+ghostscript
+ghostscript-fonts-std
+glibc
+#glibc-solibs
+glibc-zoneinfo
+gnupg
+gnupg2
+gnutls
+gpgme
+gpm
+gptfdisk
+grep
+groff
+guile
+gzip
+infozip
+iproute2
+iptables
+iputils
+kbd
+kernel-generic
+kernel-firmware
+kernel-headers
+kernel-modules
+kmod
+less
+libassuan
+libevent
+libgcrypt
+libgpg-error
+libgudev
+libksba
+libmpc
+libtermcap
+lilo
+links
+logrotate
+lvm2
+make
+man
+man-pages
+mc
+mdadm
+mkinitrd
+mpfr
+mtr
+nano
+ncurses
+net-tools
+network-scripts
+openldap-client
+openssh
+openssl
+parted
+pciutils
+perl
+pkgtools
+polkit
+procps-ng
+pth
+python
+quota
+rsync
+screen
+sed
+shadow
+sharutils
+slackpkg
+slocate
+strace
+sudo
+sysklogd
+syslinux
+sysvinit
+sysvinit-scripts
+tar
+terminus-font
+usbutils
+utempter
+util-linux
+wget
+which
+whois
+xz
+
+MINIMAL_PACKAGES
+}

@@ -1,0 +1,192 @@
+#kuSlack-cook
+###############################################################################
+# KUSTOM SLACKWARE - COOK MODULE -
+###############################################################################
+# In fact kuSlack cooking is "mainly" a recipe script generator.
+# The recipe script can be launched as root to generate the kustom slackware
+# flavor.
+# Actually, kuSlack can automatically launch the recipe after a succesful
+# build, using sudo if you're a 'lambda' user or by a direct call if you run
+# kuSlack as root.
+# The two-step process allow to review the generated recipe script before
+# executing it, and also allow a "clear" separation from the kuSlack generic
+# code and flavor management and the actual flavor building.
+###############################################################################
+# Cooking process:
+#
+# 1 - mix flavors
+# 2 - collect the live tree (if ramdisk must mount live fs images).
+# 3 - collect data tree (Joliet data track) (install files if installer and/or
+#      holding live fs compressed images (squashfs).
+# 4 - collect boot/live ramdisk tree (initrd).
+# 5 - pack initrd image.
+# 6 - generate ISO image.
+#
+###############################################################################
+
+#######################################
+# Kook parameters:
+KUSLACK_INCLUDE_USER_SCRIPTS=${KUSLACK_INCLUDE_USER_SCRIPTS:-0}
+KUSLACK_REVIEW_RECIPE=${KUSLACK_REVIEW_RECIPE:-0}
+KUSLACK_EXECUTE_RECIPE=${KUSLACK_EXECUTE_RECIPE:-0}
+
+#######################################
+# Cooking Layout:
+readonly KOOK_BOOT_NAME='bootinst'
+readonly KOOK_INITRD_NAME='initrd'
+readonly KOOK_LIVE_NAME='live'
+readonly KOOK_LIVE_OVL_NAME='.live.ovl'
+readonly KOOK_DATA_NAME='data'
+readonly KOOK_SEQ_NAME='sequence'
+readonly KOOK_RECIPE_NAME='recipe'
+readonly KOOK_INITRD_IMAGE_NAME='initrd.img'
+
+###############################################################################
+# Kustom Slackware Cooking - Context:
+###############################################################################
+
+#######################################
+kuCook-context () {
+    KOOK_ROOT="${KITCHEN_OVEN}/${KUFLAV_NAME}"
+    KOOK_BOOT="${KOOK_ROOT}/${KOOK_BOOT_NAME}";
+    KOOK_INITRD="${KOOK_ROOT}/${KOOK_INITRD_NAME}"
+    KOOK_LIVE="${KOOK_ROOT}/${KOOK_LIVE_NAME}"
+    KOOK_LIVE_OVL="${KOOK_ROOT}/${KOOK_LIVE_OVL_NAME}"
+    KOOK_DATA="${KOOK_ROOT}/${KOOK_DATA_NAME}"
+    KOOK_SEQ="${KOOK_ROOT}/${KOOK_SEQ_NAME}"
+    KOOK_RECIPE="${KOOK_ROOT}/${KOOK_RECIPE_NAME}"
+    KOOK_INITRD_IMAGE="${KOOK_ROOT}/${KOOK_INITRD_IMAGE_NAME}"
+    DISH_ROOT="${KITCHEN_DISHES}/${KUFLAV_NAME}"
+    # Temps:
+    KOOK_MORTAR_RC="$(mktemp)"
+    KOOK_MORTAR_LIVE="$(mktemp)"
+    KOOK_MORTAR_DATA="$(mktemp)"
+}
+
+#######################################
+kuCook-context-shut () {
+    # Clean temps:
+    rm "$KOOK_MORTAR_RC" "$KOOK_MORTAR_LIVE" "$KOOK_MORTAR_DATA"
+    # Clean env:
+    unset \
+	KOOK_ROOT KOOK_LIVE KOOK_DATA \
+	KOOK_SEQ KOOK_RECIPE KOOK_INITRD_IMAGE \
+	DISH_ROOT \
+	KOOK_MORTAR_RC KOOK_MORTAR_LIVE KOOK_MORTAR_DATA
+}
+
+#######################################
+kuCook-context-setup () {
+    # Spawn pot:
+    [[ -d "$KOOK_ROOT" ]] || mkdir -p "$KOOK_ROOT"
+    # Clean pot:
+    #Note: we can't remove LIVE and DATA realms as they are generated
+    # as root, and we want to be executed as 'lambda user' here.
+    nsk-deleteFiles "$KOOK_SEQ" "$KOOK_RECIPE"
+}
+
+###############################################################################
+# Flavor Recipe Builder:
+###############################################################################
+
+#######################################
+kuCook-refUserScript () {
+    if [[ -f "$1" ]]
+    then
+	echo "KOOK_FLAVOR_DIR='$flavPath'"
+	(( KUSLACK_INCLUDE_USER_SCRIPTS )) \
+	    &&  cat "$1" \
+	    ||  echo ". '$1'"
+	echo "unset KOOK_FLAVOR_DIR"
+    fi
+}
+
+#######################################
+kuCook-refDirTreeTemplate () { [[ ! -d "$1" ]] || echo "$1" ; }
+
+#######################################
+kuCook-prepareRecipe () {
+    verbose-echo "Preparing Flavor Recipe: ${KUFLAV_NAME}"
+    verbose-echo "Oven: ${KOOK_ROOT}"
+
+    # Collect the sequence's ingredients:
+    local flavPath flavRC flavName binsPath="" modsPath=""
+    verbose-echo "Collecting ingredients..."
+    while IFS= read flavPath ; do
+	flavName="${flavPath##*/}"
+        verbose-echo " * Mixing flavor [$flavName] ingredients."
+	flavRC="${flavPath}/${KUFLAV_RC_NAME}"
+	flavLive="${flavPath}/${KUFLAV_LIVETREE_NAME}"
+	flavData="${flavPath}/${KUFLAV_DATATREE_NAME}"
+	flavBins="${flavPath}/${KUFLAV_BINARIES_NAME}"
+	flavMods="${flavPath}/${KUFLAV_MODULES_NAME}"
+	kuCook-refUserScript "$flavRC" >>"$KOOK_MORTAR_RC"
+	kuCook-refDirTreeTemplate "$flavLive" >>"$KOOK_MORTAR_LIVE"
+	kuCook-refDirTreeTemplate "$flavData" >>"$KOOK_MORTAR_DATA"
+	[[ ! -d "$flavBins" ]] || binsPath="$flavBins:$binsPath"
+	[[ ! -d "$flavMods" ]] || modsPath="$flavMods:$modsPath"
+    done <"$KOOK_SEQ"
+
+    # Build the recipe script:
+    verbose-echo "Writing down recipe..."
+    xtrn-snippets-init
+    kuCook-recipeHead >"$KOOK_RECIPE"
+    kuCook-recipeInterface >>"$KOOK_RECIPE"
+    kuCook-recipeMortar >>"$KOOK_RECIPE"
+    kuCook-recipeTail >>"$KOOK_RECIPE"
+    chmod +x "$KOOK_RECIPE"
+    verbose-echo "Recipe wrote as: '${KOOK_RECIPE}'"
+}
+
+###############################################################################
+# Kustom Slackware - Top-level flavor cooking:
+###############################################################################
+
+#######################################
+kuSlack-cook () {
+    local flavorBase="$1" flavorName="$2"
+    kuFlavor-context "$flavorBase" "$flavorName"
+    if [[ -d "$KUFLAV_ROOT" ]] ; then
+	verbose-echo "kuSlack: Cooking flavor [${flavorName}]..."
+	# Prepare Cooking context:
+	kuCook-context
+	kuCook-context-setup
+
+	# Build sequence:
+	kuFlavor-dependencies "$KUFLAV_NAME" >"$KOOK_SEQ"
+
+	# Prepare recipe:
+	kuCook-prepareRecipe
+
+	# Review recipe:
+	(( !KUSLACK_REVIEW_RECIPE )) || less "$KOOK_RECIPE"
+
+	# Execute recipe:
+	(( !KUSLACK_EXECUTE_RECIPE )) || kuCook-execBake
+
+	# Clean Cooking context:
+	kuCook-context-shut
+    else nsk-error "kuSlack: Unknown flavor [${flavorName}] !"
+    fi
+    kuFlavor-context-shut
+}
+
+#######################################
+kuCook-execBake () {
+    verbose-echo "kuSlack: Executing flavor [${flavorName}] recipe..."
+    if (( EUID )) ; then
+	if [[ -n "$LU_SUDO" ]] ; then
+	    cat-err <<SUDO_WARNING
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+WARNING: You are NOT logged as root on this session.
+We will attempt to run recipe through 'sudo'.
+From Slackware and many linux, you should be able to
+simply add you to the wheel group.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SUDO_WARNING
+            "$LU_SUDO" "$KOOK_RECIPE"
+	else nsk-error "Can't run the recipe: you are not ROOT and 'sudo' was not found !"
+	fi
+    else "$KOOK_RECIPE"
+    fi
+}

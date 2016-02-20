@@ -1,0 +1,67 @@
+###############################################################################
+# Kustom Slackware Recipe Interface:
+###############################################################################
+KOOK_LIVE_INSTALLER=${KOOK_LIVE_INSTALLER:-1}
+
+#######################################
+# Simple setters:
+kuSlack-setSlackwareRepo () { KOOK_REPO_ROOT="$1" ; }
+kuSlack-setApplicationID () { KOOK_APP_ID="$1" ; }
+kuSlack-setVolumeName () { KOOK_VOLUME_NAME="$1" ; }
+kuSlack-setISOMod () { KOOK_ISO_MOD="$1" ; }
+kuSlack-setISOOwner () { KOOK_ISO_OWNER="$1" ; }
+
+#######################################
+# Do we generate an installer media or
+# a "Live" from scratch ?
+kuSlack-liveInstaller () { KOOK_LIVE_INSTALLER=1 ; }
+kuSlack-liveFromScratch () { KOOK_LIVE_INSTALLER=0 ; }
+
+#######################################
+# Flavor's handlers:
+#######################################
+
+# Global init handlers:
+KSHDL_INIT="$(nsk-temp)"
+kuSlack-init-handler () { echo "$@" >>"$KSHDL_INIT" ; }
+
+# Live tree handlers:
+KSHDL_LIVE_INIT="$(nsk-temp)"
+KSHDL_LIVE_SETUP="$(nsk-temp)"
+kuSlack-live-init-handler () { echo "$@" >>"$KSHDL_LIVE_INIT" ; }
+kuSlack-live-setup-handler () { echo "$@" >>"$KSHDL_LIVE_SETUP" ; }
+
+# Data tree handlers:
+KSHDL_DATA_INIT="$(nsk-temp)"
+KSHDL_DATA_SETUP="$(nsk-temp)"
+kuSlack-data-init-handler () { echo "$@" >>"$KSHDL_DATA_INIT" ; }
+kuSlack-data-setup-handler () { echo "$@" >>"$KSHDL_DATA_SETUP" ; }
+
+# Before ramdisk generation handlers:
+KSHDL_BEFORE_RAMDISK="$(nsk-temp)"
+kuSlack-before-ramdisk-handler () { echo "$@" >>"$KSHDL_BEFORE_RAMDISK" ; }
+
+# Init Ramdisk handlers:
+KSHDL_INITRD_INIT="$(nsk-temp)"
+KSHDL_INITRD_SETUP="$(nsk-temp)"
+kuSlack-initrd-init-handler () { echo "$@" >>"$KSHDL_INITRD_INIT" ; }
+kuSlack-initrd-setup-handler () { echo "$@" >>"$KSHDL_INITRD_SETUP" ; }
+
+# Isolinux handlers:
+#Note: init handler doesn't trigger custom isolinux handler, it can
+# just be used to 'tweak' the stock isolinux setup.
+KOOK_LIVE_KUSTOM_ISOLINUX=0
+KSHDL_KIL_INIT="$(nsk-temp)"
+KSHDL_KIL="$(nsk-temp)"
+kuSlack-kustomIsolinux-init-handler () { echo "$@" >>"$KSHDL_KIL_INIT"; }
+kuSlack-kustomIsolinux-setup-handler () { echo "$@" >>"$KSHDL_KIL" ; KOOK_LIVE_KUSTOM_ISOLINUX=1 ; }
+
+# Post-generation handlers:
+KSHDL_POST="$(nsk-temp)"
+kuSlack-post-handler () { echo "$@" >>"$KSHDL_POST" ; }
+
+#######################################
+# Deprecated purgatory:
+# Setup handlers:
+#KSHDL_SETUP="$(nsk-temp)"
+#kuSlack-setup-handler () { echo "$@" >>"$KSHDL_SETUP" ; }

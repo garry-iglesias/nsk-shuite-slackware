@@ -1,0 +1,64 @@
+###############################################################################
+# Kustom Slackware Internal Building functions:
+###############################################################################
+#NOTE: We don't preserve directories permission here !!
+# $1 -> source root.
+# $2 -> target root.
+kuSlack-copyTree () {
+    local srcRoot="$1" tgtRoot="$2" objList
+    objList="$(nsk-temp)"
+    ( cd "$srcRoot" && "$LU_FIND" . ) | "$LU_CUT" -b3- | "$LU_SORT" >>"$objList"
+    local curObj srcPath tgtPath
+    while IFS= read curObj ; do
+        srcPath="$srcRoot/$curObj"
+        tgtPath="$tgtRoot/$curObj"
+        if [[ -d "$srcPath" ]] ; then
+            [[ -d "$tgtPath" ]] || mkdir -p "$tgtPath"
+        elif [[ -f "$srcPath" ]] ; then
+            cp -a "$srcPath" "$tgtPath"
+        else nsk-error "Don't know how to copy: '$srcPath'"
+        fi
+    done <"$objList"
+}
+
+#######################################
+# stdin -> source root list.
+# $1 -> target root.
+kuSlack-copyTreeList () {
+    local tgtRoot="$1" srcRoot
+    while IFS= read srcRoot ; do kuSlack-copyTree "$srcRoot" "$tgtRoot" ; done
+}
+
+#######################################
+# stdin -> package absolute path list.
+kuSlack-installPackages () {
+    local rootDir="$KOOK_LIVE" ordered
+
+    nsk-log "Installing Packages into: ${rootDir}..."
+    # Filter & order packages:
+    ordered="$(nsk-temp)"
+    "$LU_SORT" -u >>"$ordered"
+    # Scan packages and install them:
+    local  pkgPath
+    while IFS= read pkgPath ; do
+        installpkg --terse --root "$rootDir" "$pkgPath" \
+            || nsk.error "Problem while installing '${pkgPath##*/}'."
+    done <"$ordered"
+}
+
+#######################################
+#TODO: This function is not in the right place... :)
+_kuSlack-prepareDirectories () {
+    nsk-log "Preparing directories"
+    # If we re-used previous build data,
+    # we don't reset directories.
+    local dirCheckFunc
+    if (( KOOK_BYPASS_LIVE_GEN || KOOK_REUSE_PACKAGES ))
+    then dirCheckFunc='nsk-checkDirs'
+    else dirCheckFunc='nsk-resetDirs'
+	rm -rf "$KOOK_LIVE"*
+    fi
+
+    ${dirCheckFunc} "$KOOK_BOOT" "$KOOK_LIVE_OVL" "$KOOK_LIVE" "$KOOK_DATA"
+}
+

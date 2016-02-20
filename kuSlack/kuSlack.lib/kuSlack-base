@@ -1,0 +1,113 @@
+#kuSlack-base
+###############################################################################
+# Kustom Slackware - Base Library -
+###############################################################################
+# This file share a lot of 'common kommando' function definitions and patterns.
+# They are 'injected' here as 'duplicated' but remains a tiny part to maintain.
+# They alse are almost always useful generics  'one-liners'.
+###############################################################################
+
+###############################################################################
+# Kustom Slackware - Environment parameters:
+###############################################################################
+
+#######################################
+KUSLACK_DEBUG=${KUSLACK_DEBUG:-0}
+KUSLACK_VERBOSE=${KUSLACK_VERBOSE:-1}
+KUSLACK_EDIT=${KUSLACK_EDIT:-1}
+
+###############################################################################
+# External Commands Lookups:
+###############################################################################
+# This (will) enable:
+#   * tools presence check.
+#   * tools alternative/wrapper when missing.
+#   * incidently, a nano-optimization avoiding PATH lookup.
+# swhich -> 'safe' which (just echo path if exists, no error)
+# gwhich -> 'gnu' which (first check for 'g' prefixed command, for BSD systems)
+swhich () { which "$1" || : ; }
+gwhich () { which "g$1" 2>/dev/null || which "$1" || : ; }
+readonly LU_BASH="$(swhich bash)"
+readonly LU_FIND="$(swhich find)"
+readonly LU_CUT="$(swhich cut)"
+readonly LU_CAT="$(swhich cat)"
+readonly LU_TAC="$(swhich tac)"
+readonly LU_SED="$(swhich sed)"
+readonly LU_GREP="$(swhich grep)"
+readonly LU_SORT="$(swhich sort)"
+readonly LU_SUDO="$(swhich sudo)"
+readonly LU_TR="$(swhich tr)"
+readonly LU_MKTEMP="$(swhich mktemp)"
+# "root" commands, warning they might not be found if located in /sbin dir
+# when ran as simple user. We should move those we happen to be "hidden" if
+# we encounter some.
+readonly LU_CHROOT="$(swhich chroot)"
+
+###############################################################################
+# KommandO functions:
+###############################################################################
+
+#######################################
+nsk-error () { echo "ERROR:" "$@" >&2 ; exit 1 ; }
+
+#######################################
+debug-echo () { (( !KUSLACK_DEBUG )) || echo "$@" ; }
+debug-cat () { (( !KUSLACK_DEBUG )) || "$LU_CAT" "$@" ; }
+verbose-echo () { (( !KUSLACK_VERBOSE )) || echo "$@" ; }
+verbose-cat () { (( !KUSLACK_VERBOSE )) || "$LU_CAT" "$@" ; }
+
+echo-err () { echo "$@" >&2 ; }
+cat-err () { "$LU_CAT" "$@" >&2 ; }
+
+#######################################
+nsk-checkDirs () { for eDir ; do [[ -d "$eDir" ]] || mkdir -p "$eDir" ; done ; }
+nsk-deleteFiles () { for eFile ; do [[ ! -f "$eFile" ]] || rm "$eFile" ; done ; }
+
+###############################################################################
+# Some files 'magicks':
+###############################################################################
+
+#######################################
+# stdin OR $1 : source file.
+# stdout : reversed file.
+#Warning: tac is not present in BSDs, we should have a workaround.
+nsk-revfile () { "$LU_TAC" "$@" ; }
+
+#######################################
+nsk-keepFirstInstance () {
+    "$LU_CAT" -n | "$LU_SORT" -k2 -u | "$LU_SORT" -g -k1 | "$LU_CUT" -f2-
+}
+
+#######################################
+nsk-keepLastInstance () { nsk-revfile | nsk-keepFirstInstance | nsk-revfile ; }
+
+#######################################
+nsk-unhashComment () { "$LU_SED" -e 's,#.*$,,g' ; }
+nsk-unemptyLines () { "$LU_GREP" -v '^[ \t]*$' ; }
+nsk-cleanSource () { nsk-unhashComment | nsk-unemptyLines ; }
+
+###############################################################################
+# Default file generation:
+###############################################################################
+
+#######################################
+# $1 -> file path.
+# $2 .. -> file content generation command.
+nsk-default-file () {
+    local filePath="$1"
+    # Generate default if missing:
+    if [[ ! -f "$filePath" ]] ; then
+	# Create parent directory if needed:
+	local parentDir
+	parentDir="$(dirname "$filePath")"
+	[[ -d "$parentDir" ]] || mkdir -p "$parentDir"
+	# And invoke generator:
+	shift
+	eval "$@" >"$filePath"
+    else verbose-echo "File already exist: '${filePath}'"
+    fi
+    # Interactive edit the file:
+    if (( KUSLACK_EDIT )) && [[ -n "${EDITOR:-}" ]] ; then
+	eval "$EDITOR" "$filePath"
+    fi
+}
